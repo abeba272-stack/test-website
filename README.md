@@ -8,9 +8,10 @@ Login und Buchungsdaten laufen jetzt über **Supabase**. Die Anzahlung bleibt al
 - Leistungen & Preise (ab) als Cards
 - Buchungs-Wizard: Service → Stylist (optional) → Kalender/Slots → Daten → (Demo) Anzahlung
 - Buchungen und Warteliste in Supabase pro eingeloggtem User
+- Serverseitiger Slot-Check (RPC) verhindert Doppelbuchungen im selben Zeitfenster
 - Kunden-Login mit Supabase (E-Mail/Passwort + Google + Apple)
 - Passwort-Reset per E-Mail aus dem Login-Formular
-- Mitarbeiter-Dashboard: Bestätigen/Stornieren, CSV Export (Auth-Guard aktiv)
+- Rollenbasiertes Dashboard (`customer`, `staff`, `admin`) mit Auth-Guard
 
 ## Supabase Setup
 1. In `supabase-config.js` eintragen:
@@ -21,8 +22,12 @@ Login und Buchungsdaten laufen jetzt über **Supabase**. Die Anzahlung bleibt al
    - `Redirect URLs`: mindestens `https://abeba272-stack.github.io/test-website/login.html`
    - lokal optional: `http://localhost:8080/login.html`
 3. In Supabase unter `Authentication -> Providers` Google/Apple aktivieren und Client IDs/Secrets eintragen.
-4. In Supabase SQL Editor `supabase-schema.sql` ausführen (Tabellen + RLS Policies).
-5. Login testen auf `login.html` und danach Buchung/Admin testen.
+4. In Supabase SQL Editor `supabase-schema.sql` ausführen (Tabellen + Rollen + RLS + RPC).
+   - Wenn du das Script schon früher ausgeführt hast: einfach erneut ausführen (idempotent).
+5. Rollen zuweisen (mindestens einen Staff-User):
+   - `select id, email from auth.users order by created_at desc;`
+   - `update public.profiles set role = 'staff' where id = '<USER_UUID>';`
+6. Login testen auf `login.html` und danach Buchung/Admin testen.
 
 ## Deploy auf GitHub Pages
 1. Neues GitHub-Repo erstellen (z. B. `parrylicious-demo`)

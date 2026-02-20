@@ -25,9 +25,11 @@
     <div class="container">
       <div class="section-head">
         <h2>Dashboard</h2>
-        <p class="muted">
-          Zeigt aktuell deine eigenen Buchungen und Wartelisten-Einträge aus deinem Konto.
-        </p>
+        <p class="muted" id="dashboardHint">Lade Dashboard-Daten…</p>
+        <div class="row gap">
+          <span class="tag" id="roleBadge">Rolle: -</span>
+          <span class="muted small" id="sessionUser"></span>
+        </div>
       </div>
 
       <div class="two-col">
@@ -36,13 +38,13 @@
           <div class="muted" id="today"></div>
           <div class="row gap">
             <button class="btn small" id="exportCsv">Export CSV</button>
-            <button class="btn small ghost" id="clearDemo">Demo-Daten löschen</button>
+            <button class="btn small ghost" id="clearDemo">Eigene Daten löschen</button>
           </div>
         </div>
 
         <div class="card">
           <h3>Quick Messages (Vorlagen)</h3>
-          <div class="muted">Beim Bestätigen/Stornieren zeigt die Demo die SMS/E‑Mail an, die später automatisch versendet wird.</div>
+          <div class="muted">Bestätigen/Stornieren zeigt aktuell Demo-Nachrichten. Versand folgt im nächsten Schritt (SMS/E-Mail).</div>
           <div class="divider"></div>
           <pre class="template">✅ Hallo {Name}, dein Termin am {Datum} um {Uhrzeit} für {Service} ist bestätigt. – Parrylicious Studio</pre>
           <pre class="template">❌ Hallo {Name}, leider müssen wir deinen Termin am {Datum} stornieren. Bitte buche einen neuen Slot. – Parrylicious Studio</pre>

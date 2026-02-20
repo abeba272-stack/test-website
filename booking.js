@@ -6,7 +6,8 @@ import {
   getMyBookings,
   getMyWaitlist,
   createMyBooking,
-  createMyWaitlistEntry
+  createMyWaitlistEntry,
+  checkSlotAvailability
 } from './supabase-data.js';
 
 const YEAR = document.getElementById('year');
@@ -156,6 +157,7 @@ const openEnd = "19:30";
 const slotStepMin = 30;
 const maxDaysAhead = 60;
 const capacitySeats = 4;
+let slotRenderToken = 0;
 
 function timeToMinutes(t){
   const [h,m] = t.split(':').map(Number);
@@ -177,7 +179,7 @@ function overlaps(aStart, aDur, bStart, bDur){
   return a0 < b1 && b0 < a1;
 }
 
-function isSlotAvailable(dateISO, startTime, durMin){
+function isSlotAvailableLocal(dateISO, startTime, durMin){
   const bookings = getBookings().filter(b => b.dateISO === dateISO && b.status !== 'canceled');
   const desiredStylist = state.stylistId;
   if (desiredStylist && desiredStylist !== 'auto'){
@@ -251,8 +253,9 @@ function renderCalendar(){
   renderSlots();
 }
 
-function renderSlots(){
-  slotsEl.innerHTML='';
+async function renderSlots(){
+  const renderToken = ++slotRenderToken;
+  slotsEl.innerHTML = '';
   toStep4.disabled = !state.time || !state.dateISO;
 
   if (!state.dateISO){
@@ -265,26 +268,58 @@ function renderSlots(){
     return;
   }
 
-  slotHint.textContent = `Service-Dauer: ${formatMinutes(service.durationMin)} · Öffnung: ${openStart}–${openEnd}`;
+  slotHint.textContent = `Service-Dauer: ${formatMinutes(service.durationMin)} · Öffnung: ${openStart}–${openEnd} · Verfügbarkeit wird geprüft…`;
   const startMin = timeToMinutes(openStart);
   const endMin = timeToMinutes(openEnd);
+  const slotMeta = [];
+
   for (let t=startMin; t + service.durationMin <= endMin; t += slotStepMin){
     const tt = minutesToTime(t);
-    const ok = isSlotAvailable(state.dateISO, tt, service.durationMin);
     const btn = document.createElement('button');
     btn.type='button';
     btn.className = 'slot';
     btn.textContent = tt;
-    if (!ok) btn.classList.add('full');
+    btn.classList.add('full');
+    btn.disabled = true;
     if (state.time === tt) btn.classList.add('selected');
+
+    const meta = { time: tt, btn, available: false };
     btn.addEventListener('click', () => {
-      if (!ok) return;
+      if (!meta.available) return;
       state.time = tt;
       saveState();
       renderSlots();
     });
     slotsEl.appendChild(btn);
+    slotMeta.push(meta);
   }
+
+  await Promise.all(slotMeta.map(async (meta) => {
+    let available = isSlotAvailableLocal(state.dateISO, meta.time, service.durationMin);
+    try {
+      available = await checkSlotAvailability({
+        dateISO: state.dateISO,
+        time: meta.time,
+        durationMin: service.durationMin,
+        stylistId: state.stylistId
+      });
+    } catch (_error) {
+      // Fallback to local estimate if RPC check is not available.
+    }
+    if (renderToken !== slotRenderToken) return;
+    meta.available = available;
+    meta.btn.classList.toggle('full', !available);
+    meta.btn.disabled = !available;
+  }));
+
+  if (renderToken !== slotRenderToken) return;
+
+  if (state.time && !slotMeta.some((s) => s.time === state.time && s.available)) {
+    state.time = null;
+    saveState();
+  }
+
+  slotHint.textContent = `Service-Dauer: ${formatMinutes(service.durationMin)} · Öffnung: ${openStart}–${openEnd}`;
   toStep4.disabled = !(state.time && state.dateISO);
 }
 
@@ -331,7 +366,7 @@ const doneSummary = document.getElementById('doneSummary');
 const payDeposit = document.getElementById('payDeposit');
 const skipPay = document.getElementById('skipPay');
 const downloadIcs = document.getElementById('downloadIcs');
-const toDone = async () => {
+const toDone = async (depositPaid) => {
   const service = services.find(s => s.id === state.serviceId);
   const bookingPayload = {
     status: 'requested',
@@ -345,13 +380,18 @@ const toDone = async () => {
     dateISO: state.dateISO,
     time: state.time,
     customer: state.customer,
-    depositPaid: false
+    depositPaid: Boolean(depositPaid)
   };
   let booking = null;
   try {
     booking = await createMyBooking(bookingPayload, currentUser.id);
     bookingsCache = [booking, ...bookingsCache];
   } catch (error) {
+    if (String(error.message || '').includes('SLOT_UNAVAILABLE')) {
+      alert('❌ Dieser Slot wurde gerade vergeben. Bitte wähle eine neue Uhrzeit.');
+      renderSlots();
+      return;
+    }
     alert(`❌ Buchung konnte nicht gespeichert werden: ${error.message}`);
     return;
   }
@@ -381,11 +421,11 @@ function renderSummary(){
 payDeposit.addEventListener('click', () => {
   // In real: redirect to Stripe Checkout, then webhook confirms.
   alert('💳 (Demo) Zahlung erfolgreich. Anfrage wird gespeichert.');
-  toDone();
+  toDone(true);
 });
 skipPay.addEventListener('click', () => {
   alert('ℹ️ (Demo) Anfrage ohne Zahlung gespeichert. In live würdest du einen Zahlungslink per E‑Mail bekommen.');
-  toDone();
+  toDone(false);
 });
 
 function renderDone(booking){
