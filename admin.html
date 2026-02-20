@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard – Parrylicious Studio (Demo)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Allura&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="assets/logo.jpg" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="container row">
+      <a class="brand" href="index.html"><img src="assets/logo.jpg" alt="Parrylicious Studio Logo" class="logo"/></a>
+      <nav class="nav">
+        <a href="booking.html">Neue Buchung</a>
+        <a class="btn small" href="index.html">Zur Website</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="section">
+    <div class="container">
+      <div class="section-head">
+        <h2>Mitarbeiter-Dashboard (Demo)</h2>
+        <p class="muted">
+          Live: Mitarbeiter-Accounts + Rollen (Admin/Mitarbeiter), Kalender-Ansicht, automatische SMS/E‑Mail.
+        </p>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <h3>Heute</h3>
+          <div class="muted" id="today"></div>
+          <div class="row gap">
+            <button class="btn small" id="exportCsv">Export CSV</button>
+            <button class="btn small ghost" id="clearDemo">Demo-Daten löschen</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Quick Messages (Vorlagen)</h3>
+          <div class="muted">Beim Bestätigen/Stornieren zeigt die Demo die SMS/E‑Mail an, die später automatisch versendet wird.</div>
+          <div class="divider"></div>
+          <pre class="template">✅ Hallo {Name}, dein Termin am {Datum} um {Uhrzeit} für {Service} ist bestätigt. – Parrylicious Studio</pre>
+          <pre class="template">❌ Hallo {Name}, leider müssen wir deinen Termin am {Datum} stornieren. Bitte buche einen neuen Slot. – Parrylicious Studio</pre>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row between">
+          <h3>Anfragen & Termine</h3>
+          <div class="row gap">
+            <select id="statusFilter">
+              <option value="all">Alle</option>
+              <option value="requested">Angefragt</option>
+              <option value="confirmed">Bestätigt</option>
+              <option value="canceled">Storniert</option>
+            </select>
+            <input id="search" placeholder="Suche Name/Service/Telefon…" />
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div id="bookingsTable" class="table" aria-live="polite"></div>
+      </div>
+
+      <div class="card">
+        <h3>Warteliste</h3>
+        <div class="muted">Wenn ausgebucht: Kunden eintragen → später Slot anbieten.</div>
+        <div class="divider"></div>
+        <div id="waitlistTable" class="table"></div>
+      </div>
+
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-grid">
+      <div class="footer-links">
+        <a href="impressum.html">Impressum</a>
+        <a href="privacy.html">Datenschutz</a>
+      </div>
+      <div class="muted">© <span id="year"></span> Parrylicious</div>
+    </div>
+  </footer>
+
+  <script type="module" src="admin.js"></script>
+</body>
+</html>
