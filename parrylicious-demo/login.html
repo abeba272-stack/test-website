@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login – Parrylicious Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Allura&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="assets/logo.jpg" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="container row">
+      <a class="brand" href="index.html"><img src="assets/logo.jpg" alt="Parrylicious Studio Logo" class="logo"/></a>
+      <nav class="nav">
+        <a href="booking.html">Termin</a>
+        <a class="btn small" href="index.html">Zurück</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="section">
+    <div class="container narrow">
+      <div class="section-head">
+        <h2>Kunden-Login (Demo)</h2>
+        <p class="muted">Hier nur simuliert. Live: E‑Mail/Passwort + Google & Apple Sign‑In.</p>
+      </div>
+
+      <div class="card">
+        <div class="two-col">
+          <button class="btn ghost" id="googleBtn">Mit Google anmelden (Demo)</button>
+          <button class="btn ghost" id="appleBtn">Mit Apple anmelden (Demo)</button>
+        </div>
+
+        <div class="divider"></div>
+
+        <form id="loginForm" class="form">
+          <label>E‑Mail
+            <input name="email" type="email" required placeholder="name@mail.de" />
+          </label>
+          <label>Passwort
+            <input name="password" type="password" required placeholder="••••••••" />
+          </label>
+
+          <div class="row between gap">
+            <button class="btn" type="submit">Einloggen</button>
+            <button class="btn ghost" type="button" id="registerBtn">Registrieren (Demo)</button>
+          </div>
+        </form>
+
+        <div class="fineprint" id="loginStatus"></div>
+      </div>
+
+      <div class="card">
+        <h3>Warum Login?</h3>
+        <ul class="list">
+          <li>Termine verwalten (verschieben/absagen)</li>
+          <li>Rechnungen/Belege abrufen</li>
+          <li>Haarprofil + Vorlieben speichern</li>
+        </ul>
+      </div>
+
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-grid">
+      <div class="footer-links">
+        <a href="impressum.html">Impressum</a>
+        <a href="privacy.html">Datenschutz</a>
+      </div>
+      <div class="muted">© <span id="year"></span> Parrylicious</div>
+    </div>
+  </footer>
+
+  <script type="module" src="login.js"></script>
+</body>
+</html>

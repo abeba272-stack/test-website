@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Datenschutz – Parrylicious Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Allura&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="assets/logo.jpg" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="container row">
+      <a class="brand" href="index.html"><img src="assets/logo.jpg" alt="Parrylicious Studio Logo" class="logo"/></a>
+      <nav class="nav">
+        <a href="booking.html">Termin</a>
+        <a class="btn small" href="index.html">Zurück</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="section">
+    <div class="container legal">
+      <h2>Datenschutzerklärung (Template)</h2>
+      <p class="muted">
+        <strong>Wichtig:</strong> Das ist ein Platzhalter-Template für die Demo. Für den Live-Betrieb sollte das juristisch geprüft werden (DSGVO).
+      </p>
+
+      <h3>1. Verantwortlicher</h3>
+      <p>
+        <strong>[Firmenname/Name]</strong><br/>
+        <strong>[Adresse]</strong><br/>
+        E‑Mail: <strong>[E‑Mail]</strong><br/>
+        Telefon: <strong>0151 70588497</strong>
+      </p>
+
+      <h3>2. Welche Daten verarbeiten wir?</h3>
+      <ul>
+        <li>Bei Buchung/Profil: Name, Adresse, Telefonnummer, E‑Mail</li>
+        <li>Optional: Notizen (z. B. Haarzustand, Allergien) – nur wenn du sie angibst</li>
+        <li>Technische Daten: IP/Browser (Server-Logs) – im Live-Betrieb</li>
+      </ul>
+
+      <h3>3. Zweck der Verarbeitung</h3>
+      <ul>
+        <li>Terminverwaltung, Kontaktaufnahme, Erinnerungen per SMS/E‑Mail</li>
+        <li>Abrechnung/Belege (Steuern)</li>
+      </ul>
+
+      <h3>4. Rechtsgrundlagen</h3>
+      <ul>
+        <li>Art. 6 Abs. 1 lit. b DSGVO (Vertrag/Anbahnung)</li>
+        <li>Art. 6 Abs. 1 lit. a DSGVO (Einwilligung) – z. B. Profil/Marketing (falls aktiviert)</li>
+      </ul>
+
+      <h3>5. Speicherdauer</h3>
+      <p>So lange wie nötig; steuerliche Aufbewahrungspflichten bleiben unberührt.</p>
+
+      <h3>6. Deine Rechte</h3>
+      <p>Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit, Widerspruch, Beschwerde.</p>
+
+      <h3>7. Auftragsverarbeiter (Live)</h3>
+      <p class="muted">
+        Im Live-Betrieb werden typischerweise genutzt: Hosting (z. B. Vercel), Datenbank/Auth (z. B. Supabase),
+        Zahlungen (Stripe), SMS (Twilio), E‑Mail (Resend). Diese Anbieter werden hier dann konkret aufgeführt.
+      </p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-grid">
+      <div class="footer-links">
+        <a href="impressum.html">Impressum</a>
+        <a href="booking.html">Termin</a>
+      </div>
+      <div class="muted">© <span id="year"></span> Parrylicious</div>
+    </div>
+  </footer>
+
+  <script type="module">
+    document.getElementById("year").textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>
