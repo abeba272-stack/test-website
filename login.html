@@ -24,14 +24,14 @@
   <main class="section">
     <div class="container narrow">
       <div class="section-head">
-        <h2>Kunden-Login (Demo)</h2>
-        <p class="muted">Hier nur simuliert. Live: E‑Mail/Passwort + Google & Apple Sign‑In.</p>
+        <h2>Kunden-Login</h2>
+        <p class="muted">E-Mail/Passwort oder OAuth via Google und Apple.</p>
       </div>
 
       <div class="card">
         <div class="two-col">
-          <button class="btn ghost" id="googleBtn">Mit Google anmelden (Demo)</button>
-          <button class="btn ghost" id="appleBtn">Mit Apple anmelden (Demo)</button>
+          <button class="btn ghost" id="googleBtn">Mit Google anmelden</button>
+          <button class="btn ghost" id="appleBtn">Mit Apple anmelden</button>
         </div>
 
         <div class="divider"></div>
@@ -44,12 +44,15 @@
             <input name="password" type="password" required placeholder="••••••••" />
           </label>
 
-          <div class="row between gap">
+          <div class="row between gap" id="loginActions">
             <button class="btn" type="submit">Einloggen</button>
-            <button class="btn ghost" type="button" id="registerBtn">Registrieren (Demo)</button>
+            <button class="btn ghost" type="button" id="registerBtn">Registrieren</button>
           </div>
+          <button class="link" type="button" id="forgotPasswordBtn">Passwort vergessen?</button>
         </form>
 
+        <button class="btn ghost hidden" type="button" id="logoutBtn">Abmelden</button>
+        <div class="fineprint" id="sessionHint">Noch nicht eingeloggt.</div>
         <div class="fineprint" id="loginStatus"></div>
       </div>
 

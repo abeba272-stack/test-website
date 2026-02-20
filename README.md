@@ -1,14 +1,28 @@
 # Parrylicious Studio – Demo Website (GitHub Pages)
 
 Diese Demo ist ein **statischer Prototype** (HTML/CSS/JS).  
-Login/Buchung/Zahlung sind hier **simuliert** (LocalStorage), damit du sofort eine schöne, verkaufbare Demo hast.
+Login und Buchungsdaten laufen jetzt über **Supabase**. Die Anzahlung bleibt als Demo-Simulation.
 
-## Features (Demo)
+## Features
 - Luxury Look (hellbraun/edel) + Logo
 - Leistungen & Preise (ab) als Cards
 - Buchungs-Wizard: Service → Stylist (optional) → Kalender/Slots → Daten → (Demo) Anzahlung
-- Warteliste (Demo)
-- Mitarbeiter-Dashboard (Demo): Bestätigen/Stornieren, CSV Export
+- Buchungen und Warteliste in Supabase pro eingeloggtem User
+- Kunden-Login mit Supabase (E-Mail/Passwort + Google + Apple)
+- Passwort-Reset per E-Mail aus dem Login-Formular
+- Mitarbeiter-Dashboard: Bestätigen/Stornieren, CSV Export (Auth-Guard aktiv)
+
+## Supabase Setup
+1. In `supabase-config.js` eintragen:
+   - `SUPABASE_URL`
+   - `SUPABASE_ANON_KEY` (Publishable key)
+2. In Supabase unter `Authentication -> URL Configuration` setzen:
+   - `Site URL`: deine Pages-URL, z. B. `https://abeba272-stack.github.io/test-website/`
+   - `Redirect URLs`: mindestens `https://abeba272-stack.github.io/test-website/login.html`
+   - lokal optional: `http://localhost:8080/login.html`
+3. In Supabase unter `Authentication -> Providers` Google/Apple aktivieren und Client IDs/Secrets eintragen.
+4. In Supabase SQL Editor `supabase-schema.sql` ausführen (Tabellen + RLS Policies).
+5. Login testen auf `login.html` und danach Buchung/Admin testen.
 
 ## Deploy auf GitHub Pages
 1. Neues GitHub-Repo erstellen (z. B. `parrylicious-demo`)

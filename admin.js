@@ -1,21 +1,29 @@
-import { storage, fmtDate, currency, formatMinutes } from './common.js';
+import { fmtDate, currency, formatMinutes } from './common.js';
+import { isSupabaseConfigured } from './supabase.js';
+import {
+  getCurrentUser,
+  getMyBookings,
+  getMyWaitlist,
+  updateMyBookingStatus,
+  removeMyWaitlistEntry,
+  clearMyBookings,
+  clearMyWaitlist
+} from './supabase-data.js';
 
 document.getElementById('year').textContent = new Date().getFullYear();
 document.getElementById('today').textContent = new Date().toLocaleString('de-DE', { weekday:'long', year:'numeric', month:'long', day:'2-digit' });
-
-const BOOKINGS_KEY = 'parry_bookings';
-const WAITLIST_KEY = 'parry_waitlist';
 
 const table = document.getElementById('bookingsTable');
 const waitTable = document.getElementById('waitlistTable');
 const statusFilter = document.getElementById('statusFilter');
 const search = document.getElementById('search');
 
-function bookings(){ return storage.get(BOOKINGS_KEY, []); }
-function setBookings(list){ storage.set(BOOKINGS_KEY, list); }
+let bookingsCache = [];
+let waitlistCache = [];
+let currentUser = null;
 
-function waitlist(){ return storage.get(WAITLIST_KEY, []); }
-function setWaitlist(list){ storage.set(WAITLIST_KEY, list); }
+function bookings(){ return bookingsCache; }
+function waitlist(){ return waitlistCache; }
 
 function pill(status){
   const label = status === 'requested' ? 'Angefragt' : status === 'confirmed' ? 'Bestätigt' : 'Storniert';
@@ -89,21 +97,31 @@ function renderWaitlist(){
         <button class="btn small ghost" data-remove="${w.id}">Entfernen</button>
       </div>
     `;
-    div.querySelector('[data-remove]').addEventListener('click', () => {
-      setWaitlist(waitlist().filter(x => x.id !== w.id));
-      renderWaitlist();
+    div.querySelector('[data-remove]').addEventListener('click', async () => {
+      try {
+        await removeMyWaitlistEntry(w.id);
+        waitlistCache = waitlistCache.filter(x => x.id !== w.id);
+        renderWaitlist();
+      } catch (error) {
+        alert(`Fehler beim Entfernen: ${error.message}`);
+      }
     });
     waitTable.appendChild(div);
   });
 }
 
-function updateStatus(id, status){
+async function updateStatus(id, status){
   const list = bookings();
   const b = list.find(x => x.id === id);
   if (!b) return;
-  b.status = status;
-  setBookings(list);
-  render();
+  try {
+    await updateMyBookingStatus(id, status);
+    b.status = status;
+    render();
+  } catch (error) {
+    alert(`Status-Update fehlgeschlagen: ${error.message}`);
+    return;
+  }
 
   const msg = status === 'confirmed'
     ? `✅ SMS/E‑Mail (Demo): Hallo ${b.customer.firstName}, dein Termin am ${fmtDate(b.dateISO)} um ${b.time} für ${b.serviceName} ist bestätigt. – Parrylicious Studio`
@@ -143,10 +161,45 @@ document.getElementById('exportCsv').addEventListener('click', () => {
 });
 
 document.getElementById('clearDemo').addEventListener('click', () => {
-  if (!confirm('Wirklich alle Demo-Daten löschen?')) return;
-  storage.set(BOOKINGS_KEY, []);
-  storage.set(WAITLIST_KEY, []);
-  render();
+  clearAllData();
 });
 
-render();
+async function clearAllData(){
+  if (!confirm('Wirklich alle eigenen Daten löschen?')) return;
+  try {
+    await clearMyBookings(currentUser?.id);
+    await clearMyWaitlist(currentUser?.id);
+    bookingsCache = [];
+    waitlistCache = [];
+    render();
+  } catch (error) {
+    alert(`Loeschen fehlgeschlagen: ${error.message}`);
+  }
+}
+
+async function loadData(){
+  bookingsCache = await getMyBookings();
+  waitlistCache = await getMyWaitlist();
+}
+
+async function boot(){
+  if (!isSupabaseConfigured) {
+    alert('Supabase ist nicht konfiguriert. Bitte zuerst login.html einrichten.');
+    window.location.href = 'login.html?next=admin.html';
+    return;
+  }
+  try {
+    currentUser = await getCurrentUser();
+    if (!currentUser) {
+      window.location.href = 'login.html?next=admin.html';
+      return;
+    }
+    await loadData();
+    render();
+  } catch (error) {
+    alert(`Dashboard konnte nicht geladen werden: ${error.message}`);
+    window.location.href = 'login.html?next=admin.html';
+  }
+}
+
+boot();

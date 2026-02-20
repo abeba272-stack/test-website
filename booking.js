@@ -1,12 +1,21 @@
 import { services } from './data/services.js';
-import { storage, uid, fmtDate, currency, formatMinutes } from './common.js';
+import { storage, fmtDate, currency, formatMinutes } from './common.js';
+import { isSupabaseConfigured } from './supabase.js';
+import {
+  getCurrentUser,
+  getMyBookings,
+  getMyWaitlist,
+  createMyBooking,
+  createMyWaitlistEntry
+} from './supabase-data.js';
 
 const YEAR = document.getElementById('year');
 if (YEAR) YEAR.textContent = new Date().getFullYear();
 
 const STATE_KEY = 'parry_booking_state';
-const BOOKINGS_KEY = 'parry_bookings';
-const WAITLIST_KEY = 'parry_waitlist';
+let currentUser = null;
+let bookingsCache = [];
+let waitlistCache = [];
 
 const stylists = [
   { id:'auto', name:'Egal (automatisch)', focus:'System entscheidet', role:'auto' },
@@ -158,12 +167,7 @@ function minutesToTime(min){
   return `${h}:${m}`;
 }
 
-function getBookings(){
-  return storage.get(BOOKINGS_KEY, []);
-}
-function setBookings(list){
-  storage.set(BOOKINGS_KEY, list);
-}
+function getBookings(){ return bookingsCache; }
 
 function overlaps(aStart, aDur, bStart, bDur){
   const a0 = timeToMinutes(aStart);
@@ -288,7 +292,7 @@ resetDate.addEventListener('click', () => {
   state.dateISO = null; state.time = null; saveState(); renderCalendar();
 });
 
-joinWaitlist.addEventListener('click', () => {
+joinWaitlist.addEventListener('click', async () => {
   const service = services.find(s => s.id === state.serviceId);
   if (!service) return alert('Bitte zuerst einen Service wählen.');
   const email = prompt('Warteliste: deine E‑Mail?');
@@ -296,18 +300,19 @@ joinWaitlist.addEventListener('click', () => {
   const phone = prompt('Telefonnummer?');
   if (!phone) return;
 
-  const wl = storage.get(WAITLIST_KEY, []);
-  wl.push({
-    id: uid('wait'),
-    createdAt: new Date().toISOString(),
-    serviceId: service.id,
-    serviceName: service.name,
-    email,
-    phone,
-    note: 'Warteliste (Demo)'
-  });
-  storage.set(WAITLIST_KEY, wl);
-  alert('✅ Warteliste gespeichert (Demo).');
+  try {
+    const row = await createMyWaitlistEntry({
+      serviceId: service.id,
+      serviceName: service.name,
+      email,
+      phone,
+      note: 'Warteliste'
+    }, currentUser.id);
+    waitlistCache = [row, ...waitlistCache];
+    alert('✅ Warteliste gespeichert.');
+  } catch (error) {
+    alert(`❌ Warteliste fehlgeschlagen: ${error.message}`);
+  }
 });
 
 /* Step 4: details form */
@@ -326,12 +331,10 @@ const doneSummary = document.getElementById('doneSummary');
 const payDeposit = document.getElementById('payDeposit');
 const skipPay = document.getElementById('skipPay');
 const downloadIcs = document.getElementById('downloadIcs');
-const toDone = () => {
+const toDone = async () => {
   const service = services.find(s => s.id === state.serviceId);
-  const booking = {
-    id: uid('book'),
+  const bookingPayload = {
     status: 'requested',
-    createdAt: new Date().toISOString(),
     serviceId: service.id,
     serviceName: service.name,
     durationMin: service.durationMin,
@@ -344,9 +347,14 @@ const toDone = () => {
     customer: state.customer,
     depositPaid: false
   };
-  const list = getBookings();
-  list.push(booking);
-  setBookings(list);
+  let booking = null;
+  try {
+    booking = await createMyBooking(bookingPayload, currentUser.id);
+    bookingsCache = [booking, ...bookingsCache];
+  } catch (error) {
+    alert(`❌ Buchung konnte nicht gespeichert werden: ${error.message}`);
+    return;
+  }
 
   // Reset transient state but keep last booking id in memory
   state.lastBookingId = booking.id;
@@ -429,4 +437,25 @@ downloadIcs.addEventListener('click', () => {
 });
 
 /* init */
-showStep(state.step || 1);
+async function boot(){
+  if (!isSupabaseConfigured) {
+    alert('Supabase ist nicht konfiguriert. Bitte supabase-config.js ausfuellen.');
+    window.location.href = 'login.html?next=booking.html';
+    return;
+  }
+  try {
+    currentUser = await getCurrentUser();
+    if (!currentUser) {
+      window.location.href = 'login.html?next=booking.html';
+      return;
+    }
+    bookingsCache = await getMyBookings();
+    waitlistCache = await getMyWaitlist();
+    showStep(state.step || 1);
+  } catch (error) {
+    alert(`Fehler beim Laden der Buchungsdaten: ${error.message}`);
+    window.location.href = 'login.html?next=booking.html';
+  }
+}
+
+boot();
