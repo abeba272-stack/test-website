@@ -11,7 +11,7 @@ import {
   clearMyBookings,
   clearMyWaitlist
 } from './supabase-data.js';
-import { sendBookingNotification } from './backend-client.js';
+import { createCheckoutSession, sendBookingNotification } from './backend-client.js';
 
 document.getElementById('year').textContent = new Date().getFullYear();
 document.getElementById('today').textContent = new Date().toLocaleString('de-DE', {
@@ -44,6 +44,21 @@ function bookings() {
 
 function waitlist() {
   return waitlistCache;
+}
+
+function canPayDeposit(booking) {
+  if (!booking) return false;
+  if (isStaffRole()) return false;
+  if (booking.status === 'canceled') return false;
+  if (booking.depositPaid || booking.paymentStatus === 'paid') return false;
+  return true;
+}
+
+function paymentActionLabel(booking) {
+  if (!booking) return 'Anzahlung zahlen';
+  if (booking.paymentStatus === 'pending') return 'Anzahlung fortsetzen';
+  if (booking.paymentStatus === 'failed') return 'Erneut zahlen';
+  return 'Anzahlung zahlen';
 }
 
 function pill(status) {
@@ -96,6 +111,7 @@ function render() {
         <button class="btn small ghost" data-cancel="${b.id}" ${b.status === 'canceled' ? 'disabled' : ''}>Stornieren</button>
       `
       : `
+        ${canPayDeposit(b) ? `<button class="btn small" data-pay="${b.id}">${paymentActionLabel(b)}</button>` : ''}
         <button class="btn small ghost" data-cancel-own="${b.id}" ${b.status === 'canceled' ? 'disabled' : ''}>Termin stornieren</button>
       `;
 
@@ -126,6 +142,7 @@ function render() {
     div.querySelector('[data-confirm]')?.addEventListener('click', () => updateStatus(b.id, 'confirmed'));
     div.querySelector('[data-cancel]')?.addEventListener('click', () => updateStatus(b.id, 'canceled'));
     div.querySelector('[data-cancel-own]')?.addEventListener('click', () => updateStatus(b.id, 'canceled'));
+    div.querySelector('[data-pay]')?.addEventListener('click', () => payDepositForBooking(b));
     table.appendChild(div);
   });
 
@@ -205,6 +222,21 @@ async function updateStatus(id, status) {
     ? `✅ Termin für ${current.customer?.firstName || ''} am ${fmtDate(current.dateISO)} um ${current.time} bestätigt.`
     : `❌ Termin für ${current.customer?.firstName || ''} am ${fmtDate(current.dateISO)} wurde storniert.`;
   alert(msg);
+}
+
+async function payDepositForBooking(booking) {
+  if (!booking?.id) return;
+  const origin = `${window.location.origin}/booking.html`;
+  const checkout = await createCheckoutSession({
+    bookingId: booking.id,
+    successUrl: `${origin}?payment=success&session_id={CHECKOUT_SESSION_ID}&booking_id=${booking.id}`,
+    cancelUrl: `${origin}?payment=cancel&booking_id=${booking.id}`
+  });
+  if (!checkout.ok || !checkout.url) {
+    alert(`Checkout konnte nicht gestartet werden: ${checkout.message || 'Unbekannter Fehler'}`);
+    return;
+  }
+  window.location.href = checkout.url;
 }
 
 statusFilter.addEventListener('change', render);

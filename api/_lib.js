@@ -1,5 +1,29 @@
-function setCors(res) {
-  const allowOrigin = process.env.ALLOWED_ORIGIN || '*';
+function parseAllowedOrigins() {
+  const raw = String(process.env.ALLOWED_ORIGIN || '*').trim();
+  if (!raw || raw === '*') return ['*'];
+  return raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function normalizeOrigin(origin) {
+  if (!origin) return '';
+  return String(origin).replace(/\/$/, '');
+}
+
+function resolveAllowedOrigin(req, allowedOrigins) {
+  if (allowedOrigins.includes('*')) return '*';
+  const requestOrigin = normalizeOrigin(req?.headers?.origin);
+  if (requestOrigin && allowedOrigins.includes(requestOrigin)) return requestOrigin;
+  if (requestOrigin && !allowedOrigins.includes(requestOrigin)) return 'null';
+  return allowedOrigins[0] || 'null';
+}
+
+function setCors(req, res) {
+  const allowedOrigins = parseAllowedOrigins();
+  const allowOrigin = resolveAllowedOrigin(req, allowedOrigins);
+  res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Origin', allowOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,Stripe-Signature');
@@ -106,6 +130,23 @@ function mapBookingRowToClient(row) {
   };
 }
 
+function isAllowedReturnUrl(urlString) {
+  if (!urlString) return false;
+  let parsed = null;
+  try {
+    parsed = new URL(String(urlString));
+  } catch (_error) {
+    return false;
+  }
+
+  const protocol = String(parsed.protocol || '').toLowerCase();
+  if (protocol !== 'https:' && protocol !== 'http:') return false;
+
+  const allowedOrigins = parseAllowedOrigins();
+  if (allowedOrigins.includes('*')) return true;
+  return allowedOrigins.includes(normalizeOrigin(parsed.origin));
+}
+
 module.exports = {
   setCors,
   sendJson,
@@ -116,5 +157,6 @@ module.exports = {
   getUserRole,
   isStaffRole,
   getBookingById,
-  mapBookingRowToClient
+  mapBookingRowToClient,
+  isAllowedReturnUrl
 };

@@ -8,7 +8,8 @@ const {
   getAuthUser,
   getUserRole,
   isStaffRole,
-  getBookingById
+  getBookingById,
+  isAllowedReturnUrl
 } = require('./_lib');
 
 function toStripeAmount(amount) {
@@ -24,7 +25,7 @@ async function patchBookingPayment(bookingId, patch) {
 }
 
 module.exports = async function handler(req, res) {
-  setCors(res);
+  setCors(req, res);
   if (req.method === 'OPTIONS') {
     return sendJson(res, 204, {});
   }
@@ -65,6 +66,9 @@ module.exports = async function handler(req, res) {
     if (booking.payment_status === 'paid' || booking.deposit_paid === true) {
       return sendJson(res, 409, { message: 'Anzahlung wurde bereits bezahlt.' });
     }
+    if (booking.status === 'canceled') {
+      return sendJson(res, 409, { message: 'Stornierte Buchungen können nicht bezahlt werden.' });
+    }
 
     const amountCents = toStripeAmount(booking.deposit);
     if (!amountCents) {
@@ -73,8 +77,11 @@ module.exports = async function handler(req, res) {
 
     const origin = (req.headers.origin || '').replace(/\/$/, '');
     const fallbackOrigin = origin || `https://${req.headers.host || ''}`.replace(/\/$/, '');
-    const successUrl = body?.successUrl || `${fallbackOrigin}/booking.html?payment=success&session_id={CHECKOUT_SESSION_ID}&booking_id=${booking.id}`;
-    const cancelUrl = body?.cancelUrl || `${fallbackOrigin}/booking.html?payment=cancel&booking_id=${booking.id}`;
+    const successUrl = String(body?.successUrl || `${fallbackOrigin}/booking.html?payment=success&session_id={CHECKOUT_SESSION_ID}&booking_id=${booking.id}`);
+    const cancelUrl = String(body?.cancelUrl || `${fallbackOrigin}/booking.html?payment=cancel&booking_id=${booking.id}`);
+    if (!isAllowedReturnUrl(successUrl) || !isAllowedReturnUrl(cancelUrl)) {
+      return sendJson(res, 400, { message: 'Ungültige Rückkehr-URL. Prüfe ALLOWED_ORIGIN und Frontend-Domain.' });
+    }
 
     const params = new URLSearchParams();
     params.append('mode', 'payment');
@@ -120,9 +127,14 @@ module.exports = async function handler(req, res) {
     }
 
     await patchBookingPayment(booking.id, {
+      payment_status: 'pending',
       payment_provider: 'stripe',
+      deposit_paid: false,
       payment_reference: json.id,
-      stripe_checkout_session_id: json.id
+      stripe_checkout_session_id: json.id,
+      stripe_payment_intent_id: null,
+      payment_receipt_url: null,
+      paid_at: null
     });
 
     return sendJson(res, 200, {

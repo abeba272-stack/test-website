@@ -19,8 +19,24 @@ async function patchBookingPayment(bookingId, patch) {
   return Array.isArray(data) ? data[0] || null : null;
 }
 
+function deriveBookingPaymentState(session) {
+  const stripePaymentStatus = String(session?.payment_status || '');
+  const stripeSessionStatus = String(session?.status || '');
+
+  if (stripePaymentStatus === 'paid') {
+    return { paid: true, bookingPaymentStatus: 'paid' };
+  }
+  if (stripeSessionStatus === 'expired') {
+    return { paid: false, bookingPaymentStatus: 'failed' };
+  }
+  if (stripeSessionStatus === 'complete' && stripePaymentStatus !== 'paid') {
+    return { paid: false, bookingPaymentStatus: 'failed' };
+  }
+  return { paid: false, bookingPaymentStatus: 'pending' };
+}
+
 module.exports = async function handler(req, res) {
-  setCors(res);
+  setCors(req, res);
   if (req.method === 'OPTIONS') {
     return sendJson(res, 204, {});
   }
@@ -59,8 +75,9 @@ module.exports = async function handler(req, res) {
       return sendJson(res, response.status, { message: json?.error?.message || 'Stripe Fehler' });
     }
 
+    const paymentState = deriveBookingPaymentState(json);
     const bookingId = json.metadata?.booking_id || json.client_reference_id || null;
-    const paid = json.payment_status === 'paid';
+    const paid = paymentState.paid;
     const receiptUrl = json.payment_intent?.latest_charge?.receipt_url || null;
     const paymentIntentId = json.payment_intent?.id || json.payment_intent || null;
 
@@ -76,7 +93,7 @@ module.exports = async function handler(req, res) {
       }
 
       await patchBookingPayment(bookingId, {
-        payment_status: paid ? 'paid' : 'unpaid',
+        payment_status: paymentState.bookingPaymentStatus,
         payment_provider: 'stripe',
         deposit_paid: paid,
         paid_at: paid ? new Date().toISOString() : null,
@@ -91,6 +108,7 @@ module.exports = async function handler(req, res) {
       id: json.id,
       paid,
       payment_status: json.payment_status,
+      booking_payment_status: paymentState.bookingPaymentStatus,
       amount_total: json.amount_total || 0,
       currency: json.currency || 'eur',
       metadata: json.metadata || {},

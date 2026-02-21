@@ -72,7 +72,7 @@ async function sendTwilioSms({ to, message }) {
 }
 
 module.exports = async function handler(req, res) {
-  setCors(res);
+  setCors(req, res);
   if (req.method === 'OPTIONS') {
     return sendJson(res, 204, {});
   }

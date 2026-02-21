@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 
 const { setCors, sendJson, supabaseRequest } = require('./_lib');
+const STRIPE_API_BASE = 'https://api.stripe.com/v1';
 
 async function patchBookingPayment(bookingId, patch) {
   if (!bookingId) return null;
@@ -14,13 +15,22 @@ async function patchBookingPayment(bookingId, patch) {
 async function readRawBody(req) {
   if (typeof req.body === 'string') return req.body;
   if (Buffer.isBuffer(req.body)) return req.body.toString('utf8');
-  if (req.body && typeof req.body === 'object') return JSON.stringify(req.body);
+  if (req.body && typeof req.body === 'object') return null;
 
   const chunks = [];
   for await (const chunk of req) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   return Buffer.concat(chunks).toString('utf8');
+}
+
+function parseJsonSafe(raw) {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (_error) {
+    return null;
+  }
 }
 
 function parseStripeSignature(headerValue) {
@@ -76,8 +86,39 @@ function paymentPatchFromSession(session, paid) {
   };
 }
 
+async function fetchStripeEventById(eventId, stripeSecret) {
+  if (!eventId || !stripeSecret) return null;
+  const response = await fetch(`${STRIPE_API_BASE}/events/${encodeURIComponent(eventId)}`, {
+    headers: {
+      Authorization: `Bearer ${stripeSecret}`
+    }
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(json?.error?.message || 'Stripe Event konnte nicht geladen werden.');
+  }
+  return json;
+}
+
+async function fetchCheckoutSession(sessionId, stripeSecret) {
+  if (!sessionId || !stripeSecret) return null;
+  const response = await fetch(
+    `${STRIPE_API_BASE}/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=payment_intent.latest_charge`,
+    {
+      headers: {
+        Authorization: `Bearer ${stripeSecret}`
+      }
+    }
+  );
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(json?.error?.message || 'Checkout Session konnte nicht geladen werden.');
+  }
+  return json;
+}
+
 module.exports = async function handler(req, res) {
-  setCors(res);
+  setCors(req, res);
   if (req.method === 'OPTIONS') {
     return sendJson(res, 204, {});
   }
@@ -87,46 +128,101 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 405, { message: 'Method not allowed' });
   }
 
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!webhookSecret) {
-    return sendJson(res, 503, { message: 'Stripe Webhook ist nicht konfiguriert (STRIPE_WEBHOOK_SECRET fehlt).' });
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
+  const stripeSecret = process.env.STRIPE_SECRET_KEY || '';
+  if (!webhookSecret && !stripeSecret) {
+    return sendJson(res, 503, {
+      message: 'Stripe Webhook ist nicht konfiguriert (STRIPE_WEBHOOK_SECRET oder STRIPE_SECRET_KEY fehlt).'
+    });
   }
 
-  let rawBody = '';
+  let rawBody = null;
+  let parsedBody = null;
   try {
     rawBody = await readRawBody(req);
+    parsedBody = req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)
+      ? req.body
+      : parseJsonSafe(rawBody);
   } catch (error) {
     return sendJson(res, 400, { message: `Webhook Body konnte nicht gelesen werden: ${error.message}` });
   }
 
-  const signatureHeader = req.headers['stripe-signature'];
-  const validSignature = verifyStripeSignature(rawBody, signatureHeader, webhookSecret);
-  if (!validSignature) {
-    return sendJson(res, 400, { message: 'Ungültige Stripe-Signatur.' });
-  }
-
   let event = null;
-  try {
-    event = JSON.parse(rawBody);
-  } catch (_error) {
-    return sendJson(res, 400, { message: 'Webhook Body ist kein gültiges JSON.' });
+  if (rawBody && webhookSecret) {
+    const signatureHeader = req.headers['stripe-signature'];
+    const validSignature = verifyStripeSignature(rawBody, signatureHeader, webhookSecret);
+    if (validSignature) {
+      event = parseJsonSafe(rawBody);
+      if (!event) {
+        return sendJson(res, 400, { message: 'Webhook Body ist kein gültiges JSON.' });
+      }
+    }
   }
 
-  const session = event?.data?.object || {};
-  const bookingId = session?.metadata?.booking_id || session?.client_reference_id || null;
-  const eventType = event?.type || '';
+  // Fallback für Hosts, die den Raw-Body nicht unverändert liefern:
+  // echtes Event über Stripe API per Event-ID nachladen.
+  if (!event) {
+    const eventId = parsedBody?.id;
+    if (!eventId) {
+      return sendJson(res, 400, { message: 'Ungültige Stripe-Signatur und keine Event-ID für Fallback vorhanden.' });
+    }
+    if (!stripeSecret) {
+      return sendJson(res, 400, { message: 'STRIPE_SECRET_KEY fehlt für Webhook-Fallback-Verifikation.' });
+    }
+    try {
+      event = await fetchStripeEventById(eventId, stripeSecret);
+    } catch (error) {
+      return sendJson(res, 400, { message: error.message || 'Stripe Event konnte nicht verifiziert werden.' });
+    }
+  }
+
+  const eventType = String(event?.type || '');
+  const handledSuccessEvents = new Set(['checkout.session.completed', 'checkout.session.async_payment_succeeded']);
+  const handledFailureEvents = new Set(['checkout.session.expired', 'checkout.session.async_payment_failed']);
+
+  if (!handledSuccessEvents.has(eventType) && !handledFailureEvents.has(eventType)) {
+    return sendJson(res, 200, {
+      received: true,
+      ignored: true,
+      event: eventType
+    });
+  }
+
+  const eventSession = event?.data?.object || {};
+  const sessionId = eventSession?.id || null;
+  const bookingId = eventSession?.metadata?.booking_id || eventSession?.client_reference_id || null;
 
   try {
-    if (bookingId && (eventType === 'checkout.session.completed' || eventType === 'checkout.session.async_payment_succeeded')) {
+    if (!bookingId) {
+      return sendJson(res, 200, {
+        received: true,
+        ignored: true,
+        event: eventType,
+        reason: 'booking_id fehlt'
+      });
+    }
+
+    let session = eventSession;
+    if (sessionId && stripeSecret) {
+      try {
+        const expanded = await fetchCheckoutSession(sessionId, stripeSecret);
+        if (expanded?.id) session = expanded;
+      } catch (_error) {
+        // Nicht blockieren: Patch geht notfalls mit Event-Session weiter.
+      }
+    }
+
+    if (handledSuccessEvents.has(eventType)) {
       await patchBookingPayment(bookingId, paymentPatchFromSession(session, true));
-    } else if (bookingId && (eventType === 'checkout.session.expired' || eventType === 'checkout.session.async_payment_failed')) {
+    } else if (handledFailureEvents.has(eventType)) {
       await patchBookingPayment(bookingId, paymentPatchFromSession(session, false));
     }
 
     return sendJson(res, 200, {
       received: true,
       event: eventType,
-      bookingId
+      bookingId,
+      sessionId: sessionId || null
     });
   } catch (error) {
     return sendJson(res, 500, { message: error.message || 'Webhook Verarbeitung fehlgeschlagen.' });

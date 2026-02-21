@@ -609,6 +609,7 @@ skipPay.addEventListener('click', async () => {
 
 function renderDone(booking){
   const paymentLabel = paymentStatusLabel(booking.paymentStatus || (booking.depositPaid ? 'paid' : 'unpaid'));
+  const canStartPayment = !isGuestBooking && !booking.depositPaid && booking.status !== 'canceled';
   doneSummary.innerHTML = `
     <div class="row"><strong>Service</strong><div>${booking.serviceName}</div></div>
     <div class="row"><strong>Datum</strong><div>${fmtDate(booking.dateISO)} · ${booking.time}</div></div>
@@ -620,7 +621,23 @@ function renderDone(booking){
     <div class="muted">Bestätigungstext:</div>
     <pre class="template">Hallo ${booking.customer.firstName}, wir haben deine Anfrage am ${fmtDate(booking.dateISO)} um ${booking.time} für ${booking.serviceName} erhalten. Wir bestätigen den Termin in Kürze. – Parrylicious Studio</pre>
     ${booking.paymentReceiptUrl ? `<a class="link" href="${booking.paymentReceiptUrl}" target="_blank" rel="noreferrer">Stripe-Zahlungsbeleg öffnen</a>` : ''}
+    ${canStartPayment ? `<button class="btn small" id="payExistingBooking">Anzahlung jetzt zahlen</button>` : ''}
   `;
+
+  const payExistingBtn = document.getElementById('payExistingBooking');
+  payExistingBtn?.addEventListener('click', async () => {
+    const origin = `${window.location.origin}${window.location.pathname}`;
+    const checkout = await createCheckoutSession({
+      bookingId: booking.id,
+      successUrl: `${origin}?payment=success&session_id={CHECKOUT_SESSION_ID}&booking_id=${booking.id}`,
+      cancelUrl: `${origin}?payment=cancel&booking_id=${booking.id}`
+    });
+    if (!checkout.ok || !checkout.url) {
+      alert(`Checkout konnte nicht gestartet werden: ${checkout.message || 'Unbekannter Fehler'}`);
+      return;
+    }
+    window.location.href = checkout.url;
+  });
 }
 
 downloadIcs.addEventListener('click', () => {
@@ -719,8 +736,9 @@ async function handlePaymentReturn() {
     if (!booking) booking = findBookingInCache(bookingId);
 
     if (booking) {
-      booking.depositPaid = Boolean(verification.paid || booking.depositPaid);
-      booking.paymentStatus = verification.paid ? 'paid' : (booking.paymentStatus || 'unpaid');
+      const verifiedStatus = verification.booking_payment_status || (verification.paid ? 'paid' : 'pending');
+      booking.depositPaid = Boolean(verification.paid || verifiedStatus === 'paid');
+      booking.paymentStatus = verifiedStatus;
       booking.paymentReceiptUrl = verification.payment_receipt_url || booking.paymentReceiptUrl || null;
       upsertBookingCache(booking);
       await toDone(booking);

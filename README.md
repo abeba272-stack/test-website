@@ -36,7 +36,7 @@ Für `/api/*` (z. B. auf Vercel):
 - `STRIPE_WEBHOOK_SECRET`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `ALLOWED_ORIGIN` (z. B. `https://parrylicious.store`)
+- `ALLOWED_ORIGIN` (z. B. `https://parrylicious.store` oder mehrere per Komma: `https://parrylicious.store,http://localhost:3000`)
 - `RESEND_API_KEY` (optional, für E-Mail)
 - `RESEND_FROM_EMAIL` (optional, für E-Mail)
 - `TWILIO_ACCOUNT_SID` (optional, für SMS)
@@ -58,6 +58,8 @@ Wenn Frontend und API nicht auf derselben Domain laufen:
      - `checkout.session.async_payment_failed`
      - `checkout.session.expired`
 3. Signatur-Secret aus Stripe als `STRIPE_WEBHOOK_SECRET` setzen.
+4. `ALLOWED_ORIGIN` muss auf die Frontend-Domain zeigen, sonst blockiert Checkout-Rückkehr (`successUrl`/`cancelUrl`).
+5. Für stabile Webhook-Verifikation auf allen Hostern: `STRIPE_SECRET_KEY` auch im Webhook-Backend setzen (Fallback per Event-ID Abruf).
 
 ## Lokaler Start
 Empfohlen mit Vercel CLI, damit Frontend und `/api/*` lokal zusammen laufen:
@@ -82,6 +84,8 @@ Dann öffnen: `http://localhost:3000`
 - Buchung:
   - Gastbuchung ohne Login
   - Konto-Buchung mit Stripe Checkout
+  - Checkout startet nur für aktive (nicht stornierte) Buchungen
+  - Offene Anzahlungen aus dem Dashboard erneut starten
   - Rückkehr nach erfolgreicher Zahlung (`payment=success`)
   - Rückkehr bei Abbruch (`payment=cancel`)
 - Slotlogik:
