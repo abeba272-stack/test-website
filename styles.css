@@ -131,7 +131,7 @@ h1{
   background:
     radial-gradient(circle at 30% 30%, rgba(255,255,255,.55), rgba(205,174,140,.0) 60%),
     linear-gradient(135deg, rgba(14,6,4,.75), rgba(14,6,4,.0)),
-    url("assets/placeholder-editorial.jpg");
+    url("assets/services/passion_twist.jpg");
   background-size: cover;
   background-position: center;
   position:relative;
@@ -338,6 +338,11 @@ textarea{ min-height: 90px; resize: vertical; }
 .pill.requested{ background: rgba(255, 206, 87, .25); }
 .pill.confirmed{ background: rgba(85, 255, 170, .25); }
 .pill.canceled{ background: rgba(255, 85, 85, .18); }
+.pill.payment-unpaid{ background: rgba(255, 206, 87, .22); }
+.pill.payment-pending{ background: rgba(255, 206, 87, .28); }
+.pill.payment-paid{ background: rgba(85, 255, 170, .25); }
+.pill.payment-failed{ background: rgba(255, 85, 85, .20); }
+.pill.payment-refunded{ background: rgba(120, 170, 255, .22); }
 
 .hintbox{
   margin-top: 16px;

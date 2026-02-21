@@ -26,7 +26,14 @@ function mapBookingRow(row) {
     dateISO: row.date_iso,
     time: row.time,
     customer: row.customer || {},
-    depositPaid: Boolean(row.deposit_paid)
+    depositPaid: Boolean(row.deposit_paid),
+    paymentStatus: row.payment_status || (row.deposit_paid ? 'paid' : 'unpaid'),
+    paymentProvider: row.payment_provider || null,
+    paymentReference: row.payment_reference || null,
+    stripeCheckoutSessionId: row.stripe_checkout_session_id || null,
+    stripePaymentIntentId: row.stripe_payment_intent_id || null,
+    paymentReceiptUrl: row.payment_receipt_url || null,
+    paidAt: row.paid_at || null
   };
 }
 
@@ -74,6 +81,17 @@ export async function getMyBookings() {
   return (data || []).map(mapBookingRow);
 }
 
+export async function getMyBookingById(id) {
+  assertConfigured();
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapBookingRow(data) : null;
+}
+
 export async function createMyBooking(model, userId) {
   assertConfigured();
   if (!userId) throw new Error('Kein User gefunden.');
@@ -107,7 +125,10 @@ export async function createMyBooking(model, userId) {
     date_iso: model.dateISO,
     time: model.time,
     customer: model.customer || {},
-    deposit_paid: Boolean(model.depositPaid)
+    deposit_paid: Boolean(model.depositPaid),
+    payment_status: model.paymentStatus || (model.depositPaid ? 'paid' : 'unpaid'),
+    payment_provider: model.paymentProvider || null,
+    payment_reference: model.paymentReference || null
   };
   const fallback = await supabase
     .from('bookings')

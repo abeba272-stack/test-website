@@ -1,5 +1,5 @@
-// Services basieren auf der Salon-Liste (Demo). Preise „ab“.
-// Quelle: Salonkee Snippet (Parrylicious Hair Artist) – kann später im Admin Panel gepflegt werden.
+// Services basieren auf der aktuellen Salon-Liste. Preise „ab“.
+// Quelle: interne Studio-Liste (Parrylicious Hair Artist), pflegbar im Admin-Panel.
 
 export const services = [
   {

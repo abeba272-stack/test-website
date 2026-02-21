@@ -11,6 +11,7 @@ import {
   clearMyBookings,
   clearMyWaitlist
 } from './supabase-data.js';
+import { sendBookingNotification } from './backend-client.js';
 
 document.getElementById('year').textContent = new Date().getFullYear();
 document.getElementById('today').textContent = new Date().toLocaleString('de-DE', {
@@ -48,6 +49,20 @@ function waitlist() {
 function pill(status) {
   const label = status === 'requested' ? 'Angefragt' : status === 'confirmed' ? 'Bestätigt' : 'Storniert';
   return `<span class="pill ${status}">${label}</span>`;
+}
+
+function paymentPill(status) {
+  const normalized = status || 'unpaid';
+  const label = normalized === 'paid'
+    ? 'Anzahlung: bezahlt'
+    : normalized === 'pending'
+      ? 'Anzahlung: ausstehend'
+      : normalized === 'failed'
+        ? 'Anzahlung: fehlgeschlagen'
+        : normalized === 'refunded'
+          ? 'Anzahlung: erstattet'
+          : 'Anzahlung: offen';
+  return `<span class="pill payment-${normalized}">${label}</span>`;
 }
 
 function matches(b) {
@@ -88,6 +103,7 @@ function render() {
       <div class="row between">
         <div>
           ${pill(b.status)}
+          ${paymentPill(b.paymentStatus)}
           <strong>${b.customer?.firstName || ''} ${b.customer?.lastName || ''}</strong>
           <div class="muted small">${b.serviceName}</div>
         </div>
@@ -101,6 +117,7 @@ function render() {
         📞 ${b.customer?.phone || '-'} · ✉️ ${b.customer?.email || '-'} · 🏠 ${b.customer?.address || '-'}
       </div>
       ${b.customer?.notes ? `<div class="muted small" style="margin-top:8px">📝 ${b.customer.notes}</div>` : ''}
+      ${b.paymentReceiptUrl ? `<div class="muted small" style="margin-top:8px">🧾 <a href="${b.paymentReceiptUrl}" target="_blank" rel="noreferrer">Stripe-Zahlungsbeleg</a></div>` : ''}
       <div class="row end gap" style="margin-top:12px">
         ${actions}
       </div>
@@ -170,6 +187,20 @@ async function updateStatus(id, status) {
     return;
   }
 
+  try {
+    const eventType = status === 'confirmed' ? 'booking_confirmed' : 'booking_canceled';
+    const notifyResult = await sendBookingNotification({
+      eventType,
+      booking: current,
+      customer: current.customer || {}
+    });
+    if (!notifyResult.ok) {
+      console.warn('Notification konnte nicht versendet werden:', notifyResult.message);
+    }
+  } catch (_error) {
+    // Versandfehler blockieren den Statuswechsel nicht.
+  }
+
   const msg = status === 'confirmed'
     ? `✅ Termin für ${current.customer?.firstName || ''} am ${fmtDate(current.dateISO)} um ${current.time} bestätigt.`
     : `❌ Termin für ${current.customer?.firstName || ''} am ${fmtDate(current.dateISO)} wurde storniert.`;
@@ -215,7 +246,7 @@ document.getElementById('exportCsv').addEventListener('click', () => {
   URL.revokeObjectURL(url);
 });
 
-document.getElementById('clearDemo').addEventListener('click', () => {
+document.getElementById('clearData').addEventListener('click', () => {
   clearAllData();
 });
 
@@ -270,4 +301,3 @@ async function boot() {
 }
 
 boot();
-

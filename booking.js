@@ -4,11 +4,17 @@ import { isSupabaseConfigured } from './supabase.js';
 import {
   getCurrentUser,
   getMyBookings,
+  getMyBookingById,
   getMyWaitlist,
   createMyBooking,
   createMyWaitlistEntry,
   checkSlotAvailability
 } from './supabase-data.js';
+import {
+  createCheckoutSession,
+  verifyCheckoutSession,
+  sendBookingNotification
+} from './backend-client.js';
 
 const YEAR = document.getElementById('year');
 if (YEAR) YEAR.textContent = new Date().getFullYear();
@@ -41,7 +47,9 @@ const state = storage.get(STATE_KEY, {
   stylistId: 'auto',
   dateISO: null,
   time: null,
-  customer: null
+  customer: null,
+  lastBookingId: null,
+  pendingPaymentBookingId: null
 });
 
 function saveState(){ storage.set(STATE_KEY, state); }
@@ -236,8 +244,7 @@ function renderCalendar(){
     calendarEl.appendChild(pad);
   }
 
-  // render 28 days view (4 weeks) starting today
-  const daysToShow = 28;
+  const daysToShow = Math.min(maxDaysAhead + 1, 90);
   for (let i=0;i<daysToShow;i++){
     const d = new Date(start);
     d.setDate(d.getDate()+i);
@@ -396,14 +403,56 @@ detailsForm.addEventListener('submit', (e) => {
   showStep(5);
 });
 
-/* Step 5: payment sim */
+/* Step 5: payment */
 const summary = document.getElementById('summary');
 const doneSummary = document.getElementById('doneSummary');
 const payDeposit = document.getElementById('payDeposit');
 const skipPay = document.getElementById('skipPay');
 const downloadIcs = document.getElementById('downloadIcs');
-const toDone = async (depositPaid) => {
+
+let isSubmittingBooking = false;
+let isSubmittingPayment = false;
+
+function upsertBookingCache(booking) {
+  const idx = bookingsCache.findIndex((b) => b.id === booking.id);
+  if (idx >= 0) {
+    bookingsCache[idx] = { ...bookingsCache[idx], ...booking };
+  } else {
+    bookingsCache = [booking, ...bookingsCache];
+  }
+}
+
+function findBookingInCache(bookingId) {
+  if (!bookingId) return null;
+  return bookingsCache.find((b) => b.id === bookingId) || null;
+}
+
+function paymentStatusLabel(status) {
+  if (status === 'paid') return 'Bezahlt';
+  if (status === 'pending') return 'Ausstehend';
+  if (status === 'failed') return 'Fehlgeschlagen';
+  if (status === 'refunded') return 'Erstattet';
+  return 'Unbezahlt';
+}
+
+async function notifyBooking(eventType, booking) {
+  const result = await sendBookingNotification({
+    eventType,
+    booking,
+    customer: booking.customer || {}
+  });
+  if (!result.ok) {
+    throw new Error(result.message || 'Notification fehlgeschlagen');
+  }
+  return result;
+}
+
+async function createBookingRecord({ depositPaid }) {
   const service = services.find(s => s.id === state.serviceId);
+  if (!service) {
+    alert('Bitte zuerst einen Service auswählen.');
+    return null;
+  }
   const bookingPayload = {
     status: 'requested',
     serviceId: service.id,
@@ -416,21 +465,26 @@ const toDone = async (depositPaid) => {
     dateISO: state.dateISO,
     time: state.time,
     customer: state.customer,
-    depositPaid: Boolean(depositPaid)
+    depositPaid: Boolean(depositPaid),
+    paymentStatus: depositPaid ? 'paid' : 'unpaid',
+    paymentProvider: depositPaid ? 'manual' : null
   };
+
   let booking = null;
   if (isGuestBooking){
     booking = {
       ...bookingPayload,
       id: guestId('book'),
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      paymentStatus: depositPaid ? 'paid' : 'unpaid',
+      paymentProvider: depositPaid ? 'manual' : null
     };
-    bookingsCache = [booking, ...bookingsCache];
+    upsertBookingCache(booking);
     saveGuestBookings();
   } else {
     try {
       booking = await createMyBooking(bookingPayload, currentUser.id);
-      bookingsCache = [booking, ...bookingsCache];
+      upsertBookingCache(booking);
     } catch (error) {
       if (String(error.message || '').includes('SLOT_UNAVAILABLE')) {
         alert('❌ Dieser Slot wurde gerade vergeben. Bitte wähle eine neue Uhrzeit.');
@@ -442,13 +496,23 @@ const toDone = async (depositPaid) => {
     }
   }
 
-  // Reset transient state but keep last booking id in memory
   state.lastBookingId = booking.id;
   saveState();
+  try {
+    await notifyBooking('booking_requested', booking);
+  } catch (_error) {
+    // Notification errors should not block booking creation.
+  }
+  return booking;
+}
 
+async function toDone(booking) {
+  state.lastBookingId = booking.id;
+  state.pendingPaymentBookingId = null;
+  saveState();
   renderDone(booking);
   showStep('done');
-};
+}
 
 function renderSummary(){
   const service = services.find(s => s.id === state.serviceId);
@@ -464,26 +528,73 @@ function renderSummary(){
   `;
 }
 
-payDeposit.addEventListener('click', () => {
-  // In real: redirect to Stripe Checkout, then webhook confirms.
-  alert('💳 (Demo) Zahlung erfolgreich. Anfrage wird gespeichert.');
-  toDone(true);
+payDeposit.addEventListener('click', async () => {
+  if (isSubmittingPayment) return;
+  if (isGuestBooking) {
+    alert('Online-Anzahlung ist aktuell nur mit Login verfügbar. Du kannst als Gast ohne Online-Zahlung anfragen.');
+    return;
+  }
+
+  isSubmittingPayment = true;
+  payDeposit.disabled = true;
+
+  try {
+    let booking = findBookingInCache(state.pendingPaymentBookingId);
+    if (!booking) {
+      booking = await createBookingRecord({ depositPaid: false });
+      if (!booking) return;
+      state.pendingPaymentBookingId = booking.id;
+      saveState();
+    }
+
+    const origin = `${window.location.origin}${window.location.pathname}`;
+    const checkout = await createCheckoutSession({
+      bookingId: booking.id,
+      successUrl: `${origin}?payment=success&session_id={CHECKOUT_SESSION_ID}&booking_id=${booking.id}`,
+      cancelUrl: `${origin}?payment=cancel&booking_id=${booking.id}`
+    });
+    if (!checkout.ok || !checkout.url) {
+      alert(`Checkout konnte nicht gestartet werden: ${checkout.message || 'Unbekannter Fehler'}`);
+      return;
+    }
+    window.location.href = checkout.url;
+  } finally {
+    payDeposit.disabled = false;
+    isSubmittingPayment = false;
+  }
 });
-skipPay.addEventListener('click', () => {
-  alert('ℹ️ (Demo) Anfrage ohne Zahlung gespeichert. In live würdest du einen Zahlungslink per E‑Mail bekommen.');
-  toDone(false);
+
+skipPay.addEventListener('click', async () => {
+  if (isSubmittingBooking) return;
+  isSubmittingBooking = true;
+  skipPay.disabled = true;
+
+  try {
+    let booking = findBookingInCache(state.pendingPaymentBookingId);
+    if (!booking) {
+      booking = await createBookingRecord({ depositPaid: false });
+      if (!booking) return;
+    }
+    await toDone(booking);
+  } finally {
+    skipPay.disabled = false;
+    isSubmittingBooking = false;
+  }
 });
 
 function renderDone(booking){
+  const paymentLabel = paymentStatusLabel(booking.paymentStatus || (booking.depositPaid ? 'paid' : 'unpaid'));
   doneSummary.innerHTML = `
     <div class="row"><strong>Service</strong><div>${booking.serviceName}</div></div>
     <div class="row"><strong>Datum</strong><div>${fmtDate(booking.dateISO)} · ${booking.time}</div></div>
     <div class="row"><strong>Name</strong><div>${booking.customer.firstName} ${booking.customer.lastName}</div></div>
     <div class="row"><strong>Status</strong><div>Angefragt</div></div>
+    <div class="row"><strong>Anzahlung</strong><div>${currency(booking.deposit || 0)} · ${paymentLabel}</div></div>
     ${isGuestBooking ? '<div class="row"><strong>Modus</strong><div>Gastbuchung</div></div>' : '<div class="row"><strong>Modus</strong><div>Konto-Buchung</div></div>'}
     <div class="divider"></div>
-    <div class="muted">Demo-Nachricht (würde per SMS/E‑Mail gesendet):</div>
+    <div class="muted">Bestätigungstext:</div>
     <pre class="template">Hallo ${booking.customer.firstName}, wir haben deine Anfrage am ${fmtDate(booking.dateISO)} um ${booking.time} für ${booking.serviceName} erhalten. Wir bestätigen den Termin in Kürze. – Parrylicious Studio</pre>
+    ${booking.paymentReceiptUrl ? `<a class="link" href="${booking.paymentReceiptUrl}" target="_blank" rel="noreferrer">Stripe-Zahlungsbeleg öffnen</a>` : ''}
   `;
 }
 
@@ -500,9 +611,9 @@ downloadIcs.addEventListener('click', () => {
   const ics = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Parrylicious//Booking Demo//DE',
+    'PRODID:-//Parrylicious//Booking//DE',
     'BEGIN:VEVENT',
-    `UID:${b.id}@parrylicious-demo`,
+    `UID:${b.id}@parrylicious.store`,
     `DTSTAMP:${toICS(new Date())}`,
     `DTSTART:${toICS(dtStart)}`,
     `DTEND:${toICS(dtEnd)}`,
@@ -523,6 +634,83 @@ downloadIcs.addEventListener('click', () => {
   URL.revokeObjectURL(url);
 });
 
+function clearPaymentParamsFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  ['payment', 'session_id', 'booking_id'].forEach((key) => params.delete(key));
+  const query = params.toString();
+  const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}`;
+  window.history.replaceState({}, '', nextUrl);
+}
+
+async function refreshBookingById(bookingId) {
+  if (!bookingId || isGuestBooking) return null;
+  try {
+    const booking = await getMyBookingById(bookingId);
+    if (!booking) return null;
+    upsertBookingCache(booking);
+    return booking;
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function handlePaymentReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const paymentState = params.get('payment');
+  if (!paymentState) return false;
+
+  if (isGuestBooking) {
+    clearPaymentParamsFromUrl();
+    alert('Bitte einloggen, um den Zahlungsstatus deiner Buchung zu prüfen.');
+    return true;
+  }
+
+  if (paymentState === 'cancel') {
+    clearPaymentParamsFromUrl();
+    alert('Zahlung abgebrochen. Du kannst die Anzahlung jetzt erneut starten oder ohne Online-Zahlung fortfahren.');
+    showStep(5);
+    return true;
+  }
+
+  if (paymentState === 'success') {
+    const sessionId = params.get('session_id');
+    if (!sessionId) {
+      clearPaymentParamsFromUrl();
+      alert('Zahlung wurde zurückgeleitet, aber es fehlt eine Session-ID.');
+      showStep(5);
+      return true;
+    }
+
+    const verification = await verifyCheckoutSession(sessionId);
+    if (!verification.ok) {
+      clearPaymentParamsFromUrl();
+      alert(`Zahlung konnte nicht verifiziert werden: ${verification.message || 'Unbekannter Fehler'}`);
+      showStep(5);
+      return true;
+    }
+
+    const bookingId = verification.booking_id || params.get('booking_id') || state.pendingPaymentBookingId || state.lastBookingId;
+    let booking = await refreshBookingById(bookingId);
+    if (!booking) booking = findBookingInCache(bookingId);
+
+    if (booking) {
+      booking.depositPaid = Boolean(verification.paid || booking.depositPaid);
+      booking.paymentStatus = verification.paid ? 'paid' : (booking.paymentStatus || 'unpaid');
+      booking.paymentReceiptUrl = verification.payment_receipt_url || booking.paymentReceiptUrl || null;
+      upsertBookingCache(booking);
+      await toDone(booking);
+    } else {
+      alert('Zahlung verifiziert, aber die Buchung konnte lokal nicht geladen werden. Bitte Dashboard öffnen.');
+      showStep(5);
+    }
+
+    clearPaymentParamsFromUrl();
+    return true;
+  }
+
+  return false;
+}
+
 /* init */
 async function boot(){
   if (!isSupabaseConfigured) {
@@ -530,7 +718,8 @@ async function boot(){
     bookingsCache = storage.get(GUEST_BOOKINGS_KEY, []);
     waitlistCache = storage.get(GUEST_WAITLIST_KEY, []);
     syncBookingModeHint();
-    showStep(state.step || 1);
+    const handledPayment = await handlePaymentReturn();
+    if (!handledPayment) showStep(state.step || 1);
     return;
   }
   try {
@@ -545,7 +734,8 @@ async function boot(){
       waitlistCache = storage.get(GUEST_WAITLIST_KEY, []);
     }
     syncBookingModeHint();
-    showStep(state.step || 1);
+    const handledPayment = await handlePaymentReturn();
+    if (!handledPayment) showStep(state.step || 1);
   } catch (error) {
     isGuestBooking = true;
     bookingsCache = storage.get(GUEST_BOOKINGS_KEY, []);

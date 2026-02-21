@@ -3,6 +3,7 @@
 -- 1) profiles + role model (customer/staff/admin)
 -- 2) bookings/waitlist with strict RLS
 -- 3) secure RPC functions for slot checks + booking create/cancel/status updates
+-- 4) payment tracking fields for Stripe checkout/webhook integration
 
 create extension if not exists pgcrypto;
 
@@ -31,7 +32,14 @@ create table if not exists public.bookings (
   date_iso date not null,
   time text not null,
   customer jsonb not null default '{}'::jsonb,
-  deposit_paid boolean not null default false
+  deposit_paid boolean not null default false,
+  payment_status text not null default 'unpaid',
+  payment_provider text,
+  payment_reference text,
+  stripe_checkout_session_id text,
+  stripe_payment_intent_id text,
+  payment_receipt_url text,
+  paid_at timestamptz
 );
 
 create table if not exists public.waitlist (
@@ -46,10 +54,23 @@ create table if not exists public.waitlist (
   note text default ''
 );
 
+alter table public.bookings add column if not exists payment_status text not null default 'unpaid';
+alter table public.bookings add column if not exists payment_provider text;
+alter table public.bookings add column if not exists payment_reference text;
+alter table public.bookings add column if not exists stripe_checkout_session_id text;
+alter table public.bookings add column if not exists stripe_payment_intent_id text;
+alter table public.bookings add column if not exists payment_receipt_url text;
+alter table public.bookings add column if not exists paid_at timestamptz;
+
+update public.bookings
+set payment_status = case when deposit_paid then 'paid' else 'unpaid' end
+where payment_status is null or payment_status = '';
+
 create index if not exists profiles_role_idx on public.profiles(role);
 create index if not exists bookings_user_created_idx on public.bookings(user_id, created_at desc);
 create index if not exists bookings_date_status_idx on public.bookings(date_iso, status);
 create index if not exists bookings_stylist_date_idx on public.bookings(stylist_id, date_iso);
+create index if not exists bookings_payment_status_idx on public.bookings(payment_status);
 create index if not exists waitlist_user_created_idx on public.waitlist(user_id, created_at desc);
 
 create or replace function public.set_updated_at()
@@ -244,7 +265,8 @@ begin
     date_iso,
     time,
     customer,
-    deposit_paid
+    deposit_paid,
+    payment_status
   )
   values (
     v_user_id,
@@ -259,7 +281,8 @@ begin
     p_date_iso,
     p_time,
     coalesce(p_customer, '{}'::jsonb),
-    coalesce(p_deposit_paid, false)
+    coalesce(p_deposit_paid, false),
+    case when coalesce(p_deposit_paid, false) then 'paid' else 'unpaid' end
   )
   returning * into v_booking;
 
