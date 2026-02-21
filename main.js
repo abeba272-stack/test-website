@@ -41,7 +41,9 @@ function render(){
   if (!grid) return;
   grid.innerHTML = '';
   services.filter(matchesFilter).forEach(s => {
+    const imageSrc = s.image || 'assets/placeholder-editorial.jpg';
     const card = el('article', { class:'card' }, [
+      el('img', { class:'service-thumb', src:imageSrc, alt:`${s.name} Beispielbild`, loading:'lazy' }),
       el('div', { class:'row between' }, [
         el('h3', {}, [s.name]),
         el('div', { class:'price' }, [s.priceFrom ? `ab ${currency(s.priceFrom)}` : 'Preis auf Anfrage'])

@@ -104,7 +104,9 @@ function renderServicePicker(){
   servicePicker.innerHTML = '';
   services.forEach(s => {
     const selected = state.serviceId === s.id;
+    const imageSrc = s.image || 'assets/placeholder-editorial.jpg';
     const c = card(`
+      <img class="service-thumb" src="${imageSrc}" alt="${s.name} Beispielbild" loading="lazy" />
       <div class="row between">
         <h3>${s.name}</h3>
         <div class="price">ab ${currency(s.priceFrom)}</div>
