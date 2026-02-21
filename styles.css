@@ -59,6 +59,15 @@ a{ color:inherit; }
   box-shadow: 0 10px 28px rgba(14,6,4,.16);
   margin: 0 auto 12px;
 }
+.welcome-actions{
+  justify-content:center;
+  align-items:center;
+  flex-wrap:wrap;
+}
+.welcome-actions .btn{
+  min-width: 220px;
+  white-space: nowrap;
+}
 .welcome-bg-shape{
   position:absolute;
   border-radius:50%;
