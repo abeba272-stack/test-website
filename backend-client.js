@@ -1,3 +1,6 @@
+import { supabase, isSupabaseConfigured } from './supabase.js';
+import { BACKEND_API_BASE_URL } from './backend-config.js';
+
 function getErrorMessage(error) {
   return error?.message || 'Unbekannter Fehler';
 }
@@ -13,18 +16,48 @@ async function parseJsonSafe(response) {
 }
 
 async function requestJson(path, { method = 'GET', body = null } = {}) {
+  const url = resolveApiUrl(path);
   const init = { method, headers: {} };
   if (body !== null) {
     init.headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(body);
   }
-  const response = await fetch(path, init);
+  const token = await getAccessTokenSafe();
+  if (token) {
+    init.headers.Authorization = `Bearer ${token}`;
+  }
+  const response = await fetch(url, init);
   const data = await parseJsonSafe(response);
   if (!response.ok) {
-    const detail = data?.message || data?.error || `HTTP ${response.status}`;
+    const notFoundApi = response.status === 404 && String(path).startsWith('/api/');
+    const detail = notFoundApi
+      ? 'API nicht erreichbar. Setze BACKEND_API_BASE_URL in backend-config.js auf dein Backend (z. B. Vercel).'
+      : (data?.message || data?.error || `HTTP ${response.status}`);
     throw new Error(detail);
   }
   return data || {};
+}
+
+function normalizeBaseUrl(value) {
+  if (!value) return '';
+  return String(value).replace(/\/$/, '');
+}
+
+function resolveApiUrl(path) {
+  if (/^https?:\/\//i.test(path)) return path;
+  const base = normalizeBaseUrl(BACKEND_API_BASE_URL);
+  if (!base) return path;
+  return `${base}${String(path).startsWith('/') ? path : `/${path}`}`;
+}
+
+async function getAccessTokenSafe() {
+  if (!isSupabaseConfigured || !supabase) return null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data?.session?.access_token || null;
+  } catch (_error) {
+    return null;
+  }
 }
 
 export async function createCheckoutSession(input) {
@@ -59,4 +92,3 @@ export async function sendBookingNotification(payload) {
     return { ok: false, message: getErrorMessage(error) };
   }
 }
-

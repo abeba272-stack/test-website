@@ -41,6 +41,10 @@ function getQueryService(){
   return params.get('service');
 }
 
+function getServiceById(serviceId) {
+  return services.find((s) => s.id === serviceId) || null;
+}
+
 const state = storage.get(STATE_KEY, {
   step: 1,
   serviceId: getQueryService() || null,
@@ -51,6 +55,21 @@ const state = storage.get(STATE_KEY, {
   lastBookingId: null,
   pendingPaymentBookingId: null
 });
+
+const queryServiceId = getQueryService();
+if (queryServiceId && getServiceById(queryServiceId)) {
+  state.serviceId = queryServiceId;
+}
+if (!getServiceById(state.serviceId)) {
+  state.serviceId = null;
+  state.dateISO = null;
+  state.time = null;
+  if (Number(state.step) > 1) state.step = 1;
+}
+if (!stylists.some((s) => s.id === state.stylistId)) {
+  state.stylistId = 'auto';
+}
+storage.set(STATE_KEY, state);
 
 function saveState(){ storage.set(STATE_KEY, state); }
 function saveGuestBookings(){ storage.set(GUEST_BOOKINGS_KEY, bookingsCache); }
@@ -137,7 +156,7 @@ function renderServicePicker(){
     servicePicker.appendChild(c);
   });
 
-  toStep2.disabled = !state.serviceId;
+  toStep2.disabled = !getServiceById(state.serviceId);
 }
 renderServicePicker();
 toStep2.addEventListener('click', () => showStep(2));
@@ -177,6 +196,10 @@ const slotHint = document.getElementById('slotHint');
 const toStep4 = document.getElementById('toStep4');
 const resetDate = document.getElementById('resetDate');
 const joinWaitlist = document.getElementById('joinWaitlist');
+toStep4.addEventListener('click', () => {
+  if (!(state.dateISO && state.time)) return;
+  showStep(4);
+});
 
 const openDays = [2,3,4,5,6]; // Tue..Sat in JS: 0 Sun
 const openStart = "11:00";
@@ -290,7 +313,7 @@ async function renderSlots(){
   }
   const service = services.find(s => s.id === state.serviceId);
   if (!service){
-    slotHint.textContent = 'Wähle zuerst einen Service.';
+    slotHint.textContent = 'Service nicht gefunden. Bitte gehe zu Schritt 1 und wähle den Service neu.';
     return;
   }
 
@@ -498,10 +521,12 @@ async function createBookingRecord({ depositPaid }) {
 
   state.lastBookingId = booking.id;
   saveState();
-  try {
-    await notifyBooking('booking_requested', booking);
-  } catch (_error) {
-    // Notification errors should not block booking creation.
+  if (!isGuestBooking) {
+    try {
+      await notifyBooking('booking_requested', booking);
+    } catch (_error) {
+      // Notification errors should not block booking creation.
+    }
   }
   return booking;
 }

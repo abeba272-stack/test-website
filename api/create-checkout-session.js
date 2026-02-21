@@ -1,58 +1,18 @@
 const STRIPE_API_BASE = 'https://api.stripe.com/v1';
 
-function sendJson(res, status, payload) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify(payload));
-}
+const {
+  setCors,
+  sendJson,
+  bodyFromReq,
+  supabaseRequest,
+  getAuthUser,
+  getUserRole,
+  isStaffRole,
+  getBookingById
+} = require('./_lib');
 
 function toStripeAmount(amount) {
   return Math.max(0, Math.round(Number(amount || 0) * 100));
-}
-
-function bodyFromReq(req) {
-  if (typeof req.body === 'string') {
-    try {
-      return JSON.parse(req.body);
-    } catch (_error) {
-      return null;
-    }
-  }
-  return req.body || null;
-}
-
-function getSupabaseEnv() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  return { url, key, configured: Boolean(url && key) };
-}
-
-async function supabaseRequest(path, { method = 'GET', body = null } = {}) {
-  const { url, key, configured } = getSupabaseEnv();
-  if (!configured) {
-    throw new Error('Supabase Admin ist nicht konfiguriert (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY fehlen).');
-  }
-
-  const response = await fetch(`${url}${path}`, {
-    method,
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=representation'
-    },
-    body: body === null ? undefined : JSON.stringify(body)
-  });
-  const json = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(json?.message || json?.hint || `Supabase Fehler (${response.status})`);
-  }
-  return json;
-}
-
-async function getBookingById(bookingId) {
-  const data = await supabaseRequest(`/rest/v1/bookings?id=eq.${encodeURIComponent(bookingId)}&select=*`);
-  return Array.isArray(data) ? data[0] || null : null;
 }
 
 async function patchBookingPayment(bookingId, patch) {
@@ -64,6 +24,11 @@ async function patchBookingPayment(bookingId, patch) {
 }
 
 module.exports = async function handler(req, res) {
+  setCors(res);
+  if (req.method === 'OPTIONS') {
+    return sendJson(res, 204, {});
+  }
+
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return sendJson(res, 405, { message: 'Method not allowed' });
@@ -81,9 +46,20 @@ module.exports = async function handler(req, res) {
   }
 
   try {
+    const authUser = await getAuthUser(req);
+    if (!authUser?.id) {
+      return sendJson(res, 401, { message: 'Nicht eingeloggt.' });
+    }
+
     const booking = await getBookingById(bookingId);
     if (!booking) {
       return sendJson(res, 404, { message: 'Buchung nicht gefunden.' });
+    }
+
+    const role = await getUserRole(authUser.id);
+    const canAccess = booking.user_id === authUser.id || isStaffRole(role);
+    if (!canAccess) {
+      return sendJson(res, 403, { message: 'Keine Berechtigung für diese Buchung.' });
     }
 
     if (booking.payment_status === 'paid' || booking.deposit_paid === true) {

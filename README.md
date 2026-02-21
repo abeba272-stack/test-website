@@ -36,11 +36,17 @@ Für `/api/*` (z. B. auf Vercel):
 - `STRIPE_WEBHOOK_SECRET`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `ALLOWED_ORIGIN` (z. B. `https://parrylicious.store`)
 - `RESEND_API_KEY` (optional, für E-Mail)
 - `RESEND_FROM_EMAIL` (optional, für E-Mail)
 - `TWILIO_ACCOUNT_SID` (optional, für SMS)
 - `TWILIO_AUTH_TOKEN` (optional, für SMS)
 - `TWILIO_FROM_NUMBER` (optional, für SMS)
+
+## Frontend API Ziel setzen
+Wenn Frontend und API nicht auf derselben Domain laufen:
+1. In `backend-config.js` `BACKEND_API_BASE_URL` setzen, z. B. `https://parrylicious-api.vercel.app`
+2. Backend `ALLOWED_ORIGIN` auf deine Frontend-Domain setzen.
 
 ## Stripe Setup
 1. In Stripe ein Produkt für die Anzahlung ist nicht zwingend nötig; Checkout wird dynamisch pro Buchung erzeugt.

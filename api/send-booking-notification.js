@@ -1,19 +1,13 @@
-function sendJson(res, status, payload) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify(payload));
-}
-
-function bodyFromReq(req) {
-  if (typeof req.body === 'string') {
-    try {
-      return JSON.parse(req.body);
-    } catch (_error) {
-      return null;
-    }
-  }
-  return req.body || null;
-}
+const {
+  setCors,
+  sendJson,
+  bodyFromReq,
+  getAuthUser,
+  getUserRole,
+  isStaffRole,
+  getBookingById,
+  mapBookingRowToClient
+} = require('./_lib');
 
 function pickTemplate(eventType, booking, customer) {
   const firstName = customer?.firstName || 'Kundin/Kunde';
@@ -78,25 +72,57 @@ async function sendTwilioSms({ to, message }) {
 }
 
 module.exports = async function handler(req, res) {
+  setCors(res);
+  if (req.method === 'OPTIONS') {
+    return sendJson(res, 204, {});
+  }
+
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return sendJson(res, 405, { message: 'Method not allowed' });
   }
 
   const body = bodyFromReq(req);
-  if (!body?.eventType || !body?.booking) {
-    return sendJson(res, 400, { message: 'eventType und booking sind erforderlich.' });
+  if (!body?.eventType || !body?.booking?.id) {
+    return sendJson(res, 400, { message: 'eventType und booking.id sind erforderlich.' });
   }
 
-  const customer = body.customer || body.booking.customer || {};
-  const message = pickTemplate(body.eventType, body.booking, customer);
-  const subject = body.eventType === 'booking_confirmed'
-    ? 'Termin bestätigt – Parrylicious'
-    : body.eventType === 'booking_canceled'
-      ? 'Termin storniert – Parrylicious'
-      : 'Termin-Anfrage erhalten – Parrylicious';
+  if (!['booking_requested', 'booking_confirmed', 'booking_canceled'].includes(body.eventType)) {
+    return sendJson(res, 400, { message: 'Ungültiger eventType.' });
+  }
 
   try {
+    const authUser = await getAuthUser(req);
+    if (!authUser?.id) {
+      return sendJson(res, 401, { message: 'Nicht eingeloggt.' });
+    }
+
+    const bookingRow = await getBookingById(body.booking.id);
+    if (!bookingRow) {
+      return sendJson(res, 404, { message: 'Buchung nicht gefunden.' });
+    }
+
+    const role = await getUserRole(authUser.id);
+    const staff = isStaffRole(role);
+    const isOwner = bookingRow.user_id === authUser.id;
+    const eventType = body.eventType;
+
+    if (!staff && !isOwner) {
+      return sendJson(res, 403, { message: 'Keine Berechtigung für diese Buchung.' });
+    }
+    if (!staff && eventType === 'booking_confirmed') {
+      return sendJson(res, 403, { message: 'Nur Staff/Admin darf bestätigen.' });
+    }
+
+    const booking = mapBookingRowToClient(bookingRow);
+    const customer = booking.customer || {};
+    const message = pickTemplate(eventType, booking, customer);
+    const subject = eventType === 'booking_confirmed'
+      ? 'Termin bestätigt – Parrylicious'
+      : eventType === 'booking_canceled'
+        ? 'Termin storniert – Parrylicious'
+        : 'Termin-Anfrage erhalten – Parrylicious';
+
     const [email, sms] = await Promise.all([
       sendResendEmail({ to: customer.email, subject, message }),
       sendTwilioSms({ to: customer.phone, message })
@@ -111,4 +137,3 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 500, { message: error.message || 'Benachrichtigung fehlgeschlagen.' });
   }
 };
-

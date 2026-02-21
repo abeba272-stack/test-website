@@ -1,34 +1,14 @@
 const STRIPE_API_BASE = 'https://api.stripe.com/v1';
 
-function sendJson(res, status, payload) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify(payload));
-}
-
-function getSupabaseEnv() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  return { url, key, configured: Boolean(url && key) };
-}
-
-async function supabaseRequest(path, { method = 'GET', body = null } = {}) {
-  const { url, key, configured } = getSupabaseEnv();
-  if (!configured) return null;
-
-  const response = await fetch(`${url}${path}`, {
-    method,
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=representation'
-    },
-    body: body === null ? undefined : JSON.stringify(body)
-  });
-  if (!response.ok) return null;
-  return response.json().catch(() => null);
-}
+const {
+  setCors,
+  sendJson,
+  supabaseRequest,
+  getAuthUser,
+  getUserRole,
+  isStaffRole,
+  getBookingById
+} = require('./_lib');
 
 async function patchBookingPayment(bookingId, patch) {
   if (!bookingId) return null;
@@ -40,6 +20,11 @@ async function patchBookingPayment(bookingId, patch) {
 }
 
 module.exports = async function handler(req, res) {
+  setCors(res);
+  if (req.method === 'OPTIONS') {
+    return sendJson(res, 204, {});
+  }
+
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
     return sendJson(res, 405, { message: 'Method not allowed' });
@@ -56,6 +41,11 @@ module.exports = async function handler(req, res) {
   }
 
   try {
+    const authUser = await getAuthUser(req);
+    if (!authUser?.id) {
+      return sendJson(res, 401, { message: 'Nicht eingeloggt.' });
+    }
+
     const response = await fetch(
       `${STRIPE_API_BASE}/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=payment_intent.latest_charge`,
       {
@@ -75,6 +65,16 @@ module.exports = async function handler(req, res) {
     const paymentIntentId = json.payment_intent?.id || json.payment_intent || null;
 
     if (bookingId) {
+      const booking = await getBookingById(bookingId);
+      if (!booking) {
+        return sendJson(res, 404, { message: 'Buchung nicht gefunden.' });
+      }
+      const role = await getUserRole(authUser.id);
+      const canAccess = booking.user_id === authUser.id || isStaffRole(role);
+      if (!canAccess) {
+        return sendJson(res, 403, { message: 'Keine Berechtigung für diese Buchung.' });
+      }
+
       await patchBookingPayment(bookingId, {
         payment_status: paid ? 'paid' : 'unpaid',
         payment_provider: 'stripe',

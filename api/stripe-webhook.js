@@ -1,39 +1,6 @@
 const crypto = require('crypto');
 
-function sendJson(res, status, payload) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify(payload));
-}
-
-function getSupabaseEnv() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  return { url, key, configured: Boolean(url && key) };
-}
-
-async function supabaseRequest(path, { method = 'GET', body = null } = {}) {
-  const { url, key, configured } = getSupabaseEnv();
-  if (!configured) {
-    throw new Error('Supabase Admin ist nicht konfiguriert (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY fehlen).');
-  }
-
-  const response = await fetch(`${url}${path}`, {
-    method,
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=representation'
-    },
-    body: body === null ? undefined : JSON.stringify(body)
-  });
-  const json = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(json?.message || json?.hint || `Supabase Fehler (${response.status})`);
-  }
-  return json;
-}
+const { setCors, sendJson, supabaseRequest } = require('./_lib');
 
 async function patchBookingPayment(bookingId, patch) {
   if (!bookingId) return null;
@@ -110,6 +77,11 @@ function paymentPatchFromSession(session, paid) {
 }
 
 module.exports = async function handler(req, res) {
+  setCors(res);
+  if (req.method === 'OPTIONS') {
+    return sendJson(res, 204, {});
+  }
+
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return sendJson(res, 405, { message: 'Method not allowed' });
