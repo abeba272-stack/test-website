@@ -3,6 +3,7 @@ import { storage, fmtDate, currency, formatMinutes } from './common.js';
 import { isSupabaseConfigured } from './supabase.js';
 import {
   getCurrentUser,
+  getMyProfile,
   getMyBookings,
   getMyBookingById,
   getMyWaitlist,
@@ -27,6 +28,7 @@ let currentUser = null;
 let isGuestBooking = true;
 let bookingsCache = [];
 let waitlistCache = [];
+let profileCache = null;
 
 const stylists = [
   { id:'auto', name:'Egal (automatisch)', focus:'System entscheidet', role:'auto' },
@@ -86,6 +88,20 @@ function syncBookingModeHint(){
   bookingModeHint.textContent = `Angemeldet als ${currentUser?.email || 'Konto'}: deine Buchungen landen im Dashboard.`;
 }
 
+function splitFullName(fullName) {
+  const parts = String(fullName || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return { firstName: '', lastName: '' };
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' ')
+  };
+}
+
+function mergeCustomerDraft(next) {
+  state.customer = { ...(state.customer || {}), ...(next || {}) };
+  saveState();
+}
+
 const steps = [...document.querySelectorAll('.step')];
 const panels = {
   1: document.getElementById('step1'),
@@ -106,6 +122,7 @@ function showStep(n){
     else p.classList.toggle('hidden', Number(k) !== n);
   });
   if (n === 3) renderCalendar();
+  if (n === 4) applyCustomerDraftToForm();
   if (n === 5) renderSummary();
 }
 
@@ -418,6 +435,32 @@ joinWaitlist.addEventListener('click', async () => {
 
 /* Step 4: details form */
 const detailsForm = document.getElementById('detailsForm');
+
+function applyCustomerDraftToForm() {
+  if (!detailsForm || !state.customer) return;
+  ['firstName', 'lastName', 'phone', 'email', 'address', 'notes'].forEach((key) => {
+    const input = detailsForm.elements.namedItem(key);
+    if (!input) return;
+    if (!input.value && state.customer?.[key]) {
+      input.value = state.customer[key];
+    }
+  });
+}
+
+function applyProfileDefaultsToCustomer() {
+  if (!profileCache || isGuestBooking) return;
+  const name = splitFullName(profileCache.fullName);
+  const email = currentUser?.email || '';
+  mergeCustomerDraft({
+    firstName: state.customer?.firstName || name.firstName || '',
+    lastName: state.customer?.lastName || name.lastName || '',
+    phone: state.customer?.phone || profileCache.phone || '',
+    email: state.customer?.email || email || '',
+    address: state.customer?.address || profileCache.address || '',
+    notes: state.customer?.notes || ''
+  });
+}
+
 detailsForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const fd = new FormData(detailsForm);
@@ -771,6 +814,9 @@ async function boot(){
       isGuestBooking = false;
       bookingsCache = await getMyBookings();
       waitlistCache = await getMyWaitlist();
+      profileCache = await getMyProfile();
+      applyProfileDefaultsToCustomer();
+      applyCustomerDraftToForm();
     } else {
       isGuestBooking = true;
       bookingsCache = storage.get(GUEST_BOOKINGS_KEY, []);

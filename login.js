@@ -6,7 +6,6 @@ const statusEl = document.getElementById('loginStatus');
 const form = document.getElementById('loginForm');
 const registerBtn = document.getElementById('registerBtn');
 const googleBtn = document.getElementById('googleBtn');
-const appleBtn = document.getElementById('appleBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const forgotPasswordBtn = document.getElementById('forgotPasswordBtn');
 const loginActions = document.getElementById('loginActions');
@@ -81,7 +80,6 @@ if (!isSupabaseConfigured) {
   show('Supabase ist noch nicht konfiguriert. Bitte supabase-config.js ausfuellen.');
   form.querySelectorAll('input, button').forEach((el) => { el.disabled = true; });
   googleBtn.disabled = true;
-  appleBtn.disabled = true;
   registerBtn.disabled = true;
   forgotPasswordBtn.disabled = true;
 } else {
@@ -92,15 +90,6 @@ if (!isSupabaseConfigured) {
       options: { redirectTo: getAuthRedirectUrl() }
     });
     if (error) showError('Google-Login fehlgeschlagen', error);
-  });
-
-  appleBtn.addEventListener('click', async () => {
-    clear();
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'apple',
-      options: { redirectTo: getAuthRedirectUrl() }
-    });
-    if (error) showError('Apple-Login fehlgeschlagen', error);
   });
 
   registerBtn.addEventListener('click', async () => {
@@ -165,6 +154,7 @@ if (!isSupabaseConfigured) {
     }
     setLoggedOutUI();
     show('Erfolgreich abgemeldet.');
+    window.location.href = 'home.html';
   });
 
   supabase.auth.onAuthStateChange(() => {

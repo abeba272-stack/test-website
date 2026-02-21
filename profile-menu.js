@@ -86,9 +86,7 @@ async function initMenu(container) {
     await supabase.auth.signOut();
     parts.dropdown.classList.add('hidden');
     await syncState(parts);
-    if (window.location.pathname.endsWith('/admin.html') || window.location.pathname.endsWith('admin.html')) {
-      window.location.href = 'login.html';
-    }
+    window.location.href = 'home.html';
   });
 
   if (isSupabaseConfigured && supabase) {
@@ -102,4 +100,3 @@ async function initMenu(container) {
 document.querySelectorAll('[data-profile-menu]').forEach((node) => {
   initMenu(node);
 });
-

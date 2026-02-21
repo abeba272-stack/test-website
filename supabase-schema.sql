@@ -12,6 +12,8 @@ create table if not exists public.profiles (
   role text not null default 'customer' check (role in ('customer', 'staff', 'admin')),
   full_name text,
   phone text,
+  address text,
+  avatar_url text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -61,6 +63,8 @@ alter table public.bookings add column if not exists stripe_checkout_session_id 
 alter table public.bookings add column if not exists stripe_payment_intent_id text;
 alter table public.bookings add column if not exists payment_receipt_url text;
 alter table public.bookings add column if not exists paid_at timestamptz;
+alter table public.profiles add column if not exists address text;
+alter table public.profiles add column if not exists avatar_url text;
 
 update public.bookings
 set payment_status = case when deposit_paid then 'paid' else 'unpaid' end
@@ -356,6 +360,106 @@ begin
 end;
 $$;
 
+create or replace function public.admin_set_user_role_by_email(
+  p_email text,
+  p_role text
+)
+returns table(user_id uuid, email text, role text)
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_target uuid;
+  v_email text;
+  v_role text := lower(trim(coalesce(p_role, 'customer')));
+begin
+  if v_actor is null then
+    raise exception 'AUTH_REQUIRED';
+  end if;
+
+  if public.user_role(v_actor) <> 'admin' then
+    raise exception 'FORBIDDEN';
+  end if;
+
+  if v_role not in ('customer', 'staff', 'admin') then
+    raise exception 'INVALID_ROLE';
+  end if;
+
+  v_email := lower(trim(coalesce(p_email, '')));
+  if v_email = '' then
+    raise exception 'EMAIL_REQUIRED';
+  end if;
+
+  select u.id into v_target
+  from auth.users u
+  where lower(u.email) = v_email
+  limit 1;
+
+  if v_target is null then
+    raise exception 'USER_NOT_FOUND';
+  end if;
+
+  insert into public.profiles (id, role)
+  values (v_target, v_role)
+  on conflict (id) do update
+    set role = excluded.role;
+
+  return query
+  select
+    v_target as user_id,
+    (select u.email from auth.users u where u.id = v_target) as email,
+    v_role as role;
+end;
+$$;
+
+create or replace function public.admin_list_users_with_roles(
+  p_limit_rows integer default 120
+)
+returns table(
+  user_id uuid,
+  email text,
+  role text,
+  full_name text,
+  phone text,
+  address text,
+  avatar_url text,
+  created_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_limit integer := greatest(1, least(coalesce(p_limit_rows, 120), 500));
+begin
+  if v_actor is null then
+    raise exception 'AUTH_REQUIRED';
+  end if;
+
+  if public.user_role(v_actor) <> 'admin' then
+    raise exception 'FORBIDDEN';
+  end if;
+
+  return query
+  select
+    u.id as user_id,
+    coalesce(u.email, '') as email,
+    coalesce(p.role, 'customer') as role,
+    coalesce(p.full_name, '') as full_name,
+    coalesce(p.phone, '') as phone,
+    coalesce(p.address, '') as address,
+    coalesce(p.avatar_url, '') as avatar_url,
+    u.created_at
+  from auth.users u
+  left join public.profiles p on p.id = u.id
+  order by u.created_at desc
+  limit v_limit;
+end;
+$$;
+
 alter table public.profiles enable row level security;
 alter table public.bookings enable row level security;
 alter table public.waitlist enable row level security;
@@ -366,6 +470,23 @@ on public.profiles
 for select
 to authenticated
 using (id = auth.uid() or public.is_staff_role(auth.uid()));
+
+drop policy if exists "profiles_insert_self_or_staff" on public.profiles;
+drop policy if exists "profiles_insert_self_or_admin" on public.profiles;
+create policy "profiles_insert_self_or_admin"
+on public.profiles
+for insert
+to authenticated
+with check (id = auth.uid() or public.user_role(auth.uid()) = 'admin');
+
+drop policy if exists "profiles_update_self_or_staff" on public.profiles;
+drop policy if exists "profiles_update_self_or_admin" on public.profiles;
+create policy "profiles_update_self_or_admin"
+on public.profiles
+for update
+to authenticated
+using (id = auth.uid() or public.user_role(auth.uid()) = 'admin')
+with check (id = auth.uid() or public.user_role(auth.uid()) = 'admin');
 
 drop policy if exists "bookings_select_own" on public.bookings;
 drop policy if exists "bookings_select" on public.bookings;
@@ -436,3 +557,5 @@ grant execute on function public.slot_is_available(date, text, integer, text, uu
 grant execute on function public.create_booking_secure(text, text, integer, numeric, numeric, text, text, date, text, jsonb, boolean) to authenticated;
 grant execute on function public.cancel_my_booking(uuid) to authenticated;
 grant execute on function public.set_booking_status(uuid, text) to authenticated;
+grant execute on function public.admin_set_user_role_by_email(text, text) to authenticated;
+grant execute on function public.admin_list_users_with_roles(integer) to authenticated;

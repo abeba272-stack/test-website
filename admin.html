@@ -33,23 +33,94 @@
         </div>
       </div>
 
+      <div class="dashboard-kpis">
+        <article class="card kpi-card">
+          <div class="kpi-label">Meine Termine</div>
+          <div class="kpi-value" id="kpiBookings">0</div>
+        </article>
+        <article class="card kpi-card">
+          <div class="kpi-label">Warteliste</div>
+          <div class="kpi-value" id="kpiWaitlist">0</div>
+        </article>
+        <article class="card kpi-card">
+          <div class="kpi-label">Offene Anzahlungen</div>
+          <div class="kpi-value" id="kpiOpenPayments">0</div>
+        </article>
+      </div>
+
       <div class="two-col">
         <div class="card">
+          <h3>Mein Profil</h3>
+          <p class="muted">Diese Kundendaten werden in deinem Konto gespeichert.</p>
+          <div class="profile-panel">
+            <img id="profileAvatar" class="profile-avatar-lg" src="assets/logo.jpg" alt="Profilbild" />
+            <div class="profile-avatar-actions">
+              <label class="btn small ghost" for="profileAvatarUpload">Profilbild hochladen</label>
+              <input id="profileAvatarUpload" type="file" accept="image/*" class="hidden" />
+              <button class="btn small ghost" id="profileAvatarGenerate" type="button">Avatar erstellen</button>
+              <button class="btn small ghost" id="profileAvatarRemove" type="button">Profilbild entfernen</button>
+            </div>
+          </div>
+
+          <form class="form" id="profileForm">
+            <input type="hidden" id="profileAvatarUrl" />
+            <label>Vollständiger Name
+              <input id="profileFullName" placeholder="z. B. Abeba Sundermann" />
+            </label>
+            <label>Telefon
+              <input id="profilePhone" placeholder="z. B. +49..." />
+            </label>
+            <label>Adresse
+              <input id="profileAddress" placeholder="Straße, Hausnummer, PLZ, Ort" />
+            </label>
+            <div class="row end gap">
+              <button class="btn small" type="submit">Profil speichern</button>
+            </div>
+          </form>
+          <div class="fineprint" id="profileStatus"></div>
+        </div>
+
+        <div class="card">
+          <h3>Rollen & Rechte</h3>
+          <div class="role-grid">
+            <div class="role-row">
+              <span class="pill">customer</span>
+              <span class="muted small">Eigene Termine sehen, stornieren, Anzahlung zahlen.</span>
+            </div>
+            <div class="role-row">
+              <span class="pill">staff</span>
+              <span class="muted small">Alle Termine sehen, bestätigen und stornieren.</span>
+            </div>
+            <div class="role-row">
+              <span class="pill">admin</span>
+              <span class="muted small">Wie staff + Rollen anderer Benutzer verwalten.</span>
+            </div>
+          </div>
+          <div class="divider"></div>
           <h3>Heute</h3>
           <div class="muted" id="today"></div>
-          <div class="row gap">
+          <div class="row gap" style="margin-top:12px">
             <button class="btn small" id="exportCsv">Export CSV</button>
             <button class="btn small ghost" id="clearData">Eigene Daten löschen</button>
           </div>
         </div>
+      </div>
 
-        <div class="card">
-          <h3>Quick Messages (Vorlagen)</h3>
-          <div class="muted">Beim Bestätigen oder Stornieren werden SMS/E‑Mail-Benachrichtigungen über das Backend versendet.</div>
-          <div class="divider"></div>
-          <pre class="template">✅ Hallo {Name}, dein Termin am {Datum} um {Uhrzeit} für {Service} ist bestätigt. – Parrylicious Studio</pre>
-          <pre class="template">❌ Hallo {Name}, leider müssen wir deinen Termin am {Datum} stornieren. Bitte buche einen neuen Slot. – Parrylicious Studio</pre>
-        </div>
+      <div class="card hidden" id="adminRoleCard">
+        <h3>Admin: Rollenverwaltung</h3>
+        <p class="muted">Benutzer per E-Mail einer Rolle zuweisen.</p>
+        <form class="row gap admin-role-form" id="roleForm">
+          <input id="roleEmail" type="email" placeholder="kunde@mail.de" required />
+          <select id="roleSelect" required>
+            <option value="customer">customer</option>
+            <option value="staff">staff</option>
+            <option value="admin">admin</option>
+          </select>
+          <button class="btn small" type="submit">Rolle setzen</button>
+        </form>
+        <div class="fineprint" id="roleStatus"></div>
+        <div class="divider"></div>
+        <div id="roleUsersTable" class="table"></div>
       </div>
 
       <div class="card">

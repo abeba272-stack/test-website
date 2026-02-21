@@ -54,6 +54,20 @@ function mapRole(value) {
   return 'customer';
 }
 
+function mapProfileRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    role: mapRole(row.role),
+    fullName: row.full_name || '',
+    phone: row.phone || '',
+    address: row.address || '',
+    avatarUrl: row.avatar_url || '',
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null
+  };
+}
+
 export async function getCurrentUser() {
   assertConfigured();
   const { data, error } = await supabase.auth.getUser();
@@ -69,6 +83,86 @@ export async function getCurrentUserRole() {
     throw error;
   }
   return mapRole(data);
+}
+
+export async function getMyProfile() {
+  assertConfigured();
+  const user = await getCurrentUser();
+  if (!user?.id) return null;
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) {
+    return {
+      id: user.id,
+      role: 'customer',
+      fullName: '',
+      phone: '',
+      address: '',
+      avatarUrl: '',
+      createdAt: null,
+      updatedAt: null
+    };
+  }
+  return mapProfileRow(data);
+}
+
+export async function saveMyProfile(profile) {
+  assertConfigured();
+  const user = await getCurrentUser();
+  if (!user?.id) throw new Error('AUTH_REQUIRED');
+
+  const payload = {
+    id: user.id,
+    full_name: String(profile?.fullName || '').trim() || null,
+    phone: String(profile?.phone || '').trim() || null,
+    address: String(profile?.address || '').trim() || null,
+    avatar_url: String(profile?.avatarUrl || '').trim() || null
+  };
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .upsert(payload, { onConflict: 'id' })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return mapProfileRow(data);
+}
+
+export async function adminSetUserRoleByEmail(email, role) {
+  assertConfigured();
+  const normalizedEmail = String(email || '').trim();
+  const normalizedRole = mapRole(role);
+  if (!normalizedEmail) throw new Error('E-Mail fehlt.');
+
+  const { data, error } = await supabase.rpc('admin_set_user_role_by_email', {
+    p_email: normalizedEmail,
+    p_role: normalizedRole
+  });
+  if (error) throw error;
+  return data || null;
+}
+
+export async function adminListUsersWithRoles(limitRows = 120) {
+  assertConfigured();
+  const { data, error } = await supabase.rpc('admin_list_users_with_roles', {
+    p_limit_rows: limitRows
+  });
+  if (error) throw error;
+  return (data || []).map((row) => ({
+    id: row.user_id,
+    email: row.email || '',
+    role: mapRole(row.role),
+    fullName: row.full_name || '',
+    phone: row.phone || '',
+    address: row.address || '',
+    avatarUrl: row.avatar_url || '',
+    createdAt: row.created_at || null
+  }));
 }
 
 export async function getMyBookings() {

@@ -9,6 +9,7 @@ Produktionsstand der Website mit:
 ## Features
 - Service-Katalog mit echten Style-Bildern
 - Buchungs-Wizard mit Gastmodus oder Login
+- Kundenprofil im Dashboard (Name, Telefon, Adresse, Profilbild)
 - Slot-Schutz gegen Doppelbuchungen (`slot_is_available`)
 - Rollenbasiertes Dashboard (`customer`, `staff`, `admin`)
 - Zahlungsstatus pro Buchung (`unpaid`, `pending`, `paid`, `failed`, `refunded`)
@@ -25,10 +26,15 @@ Produktionsstand der Website mit:
    - lokal optional: `http://localhost:3000/login.html`
 4. OAuth Provider aktivieren (`Authentication -> Providers`):
    - Google
-   - Apple (nur wenn vollständig mit Apple Developer konfiguriert)
 5. Rollen vergeben (mind. ein Staff/Admin):
    - `select id, email from auth.users order by created_at desc;`
    - `update public.profiles set role = 'staff' where id = '<USER_UUID>';`
+   - optional admin: `update public.profiles set role = 'admin' where id = '<USER_UUID>';`
+
+## Account-Typen
+- `customer`: Eigene Buchungen/Warteliste, eigene Stornos, Anzahlung starten, eigenes Profil pflegen.
+- `staff`: Alle Buchungen/Warteliste sehen, Buchungen bestätigen/stornieren.
+- `admin`: Wie `staff` plus Rollenverwaltung im Dashboard.
 
 ## Backend Environment Variables
 Für `/api/*` (z. B. auf Vercel):
@@ -80,7 +86,6 @@ Dann öffnen: `http://localhost:3000`
 - Login:
   - E-Mail/Passwort
   - Google OAuth
-  - Apple OAuth (falls aktiviert)
 - Buchung:
   - Gastbuchung ohne Login
   - Konto-Buchung mit Stripe Checkout
