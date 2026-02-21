@@ -14,7 +14,11 @@ const YEAR = document.getElementById('year');
 if (YEAR) YEAR.textContent = new Date().getFullYear();
 
 const STATE_KEY = 'parry_booking_state';
+const GUEST_BOOKINGS_KEY = 'parry_guest_bookings';
+const GUEST_WAITLIST_KEY = 'parry_guest_waitlist';
+const bookingModeHint = document.getElementById('bookingModeHint');
 let currentUser = null;
+let isGuestBooking = true;
 let bookingsCache = [];
 let waitlistCache = [];
 
@@ -41,6 +45,19 @@ const state = storage.get(STATE_KEY, {
 });
 
 function saveState(){ storage.set(STATE_KEY, state); }
+function saveGuestBookings(){ storage.set(GUEST_BOOKINGS_KEY, bookingsCache); }
+function saveGuestWaitlist(){ storage.set(GUEST_WAITLIST_KEY, waitlistCache); }
+function guestId(prefix){
+  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2,10)}`;
+}
+function syncBookingModeHint(){
+  if (!bookingModeHint) return;
+  if (isGuestBooking){
+    bookingModeHint.textContent = 'Gastmodus aktiv: Du kannst ohne Login buchen. Für Dashboard-Verwaltung bitte einloggen.';
+    return;
+  }
+  bookingModeHint.textContent = `Angemeldet als ${currentUser?.email || 'Konto'}: deine Buchungen landen im Dashboard.`;
+}
 
 const steps = [...document.querySelectorAll('.step')];
 const panels = {
@@ -296,15 +313,17 @@ async function renderSlots(){
 
   await Promise.all(slotMeta.map(async (meta) => {
     let available = isSlotAvailableLocal(state.dateISO, meta.time, service.durationMin);
-    try {
-      available = await checkSlotAvailability({
-        dateISO: state.dateISO,
-        time: meta.time,
-        durationMin: service.durationMin,
-        stylistId: state.stylistId
-      });
-    } catch (_error) {
-      // Fallback to local estimate if RPC check is not available.
+    if (!isGuestBooking){
+      try {
+        available = await checkSlotAvailability({
+          dateISO: state.dateISO,
+          time: meta.time,
+          durationMin: service.durationMin,
+          stylistId: state.stylistId
+        });
+      } catch (_error) {
+        // Fallback to local estimate if RPC check is not available.
+      }
     }
     if (renderToken !== slotRenderToken) return;
     meta.available = available;
@@ -334,6 +353,21 @@ joinWaitlist.addEventListener('click', async () => {
   if (!email) return;
   const phone = prompt('Telefonnummer?');
   if (!phone) return;
+
+  if (isGuestBooking){
+    waitlistCache = [{
+      id: guestId('wait'),
+      createdAt: new Date().toISOString(),
+      serviceId: service.id,
+      serviceName: service.name,
+      email,
+      phone,
+      note: 'Gast-Warteliste'
+    }, ...waitlistCache];
+    saveGuestWaitlist();
+    alert('✅ Warteliste als Gast gespeichert.');
+    return;
+  }
 
   try {
     const row = await createMyWaitlistEntry({
@@ -383,17 +417,27 @@ const toDone = async (depositPaid) => {
     depositPaid: Boolean(depositPaid)
   };
   let booking = null;
-  try {
-    booking = await createMyBooking(bookingPayload, currentUser.id);
+  if (isGuestBooking){
+    booking = {
+      ...bookingPayload,
+      id: guestId('book'),
+      createdAt: new Date().toISOString()
+    };
     bookingsCache = [booking, ...bookingsCache];
-  } catch (error) {
-    if (String(error.message || '').includes('SLOT_UNAVAILABLE')) {
-      alert('❌ Dieser Slot wurde gerade vergeben. Bitte wähle eine neue Uhrzeit.');
-      renderSlots();
+    saveGuestBookings();
+  } else {
+    try {
+      booking = await createMyBooking(bookingPayload, currentUser.id);
+      bookingsCache = [booking, ...bookingsCache];
+    } catch (error) {
+      if (String(error.message || '').includes('SLOT_UNAVAILABLE')) {
+        alert('❌ Dieser Slot wurde gerade vergeben. Bitte wähle eine neue Uhrzeit.');
+        renderSlots();
+        return;
+      }
+      alert(`❌ Buchung konnte nicht gespeichert werden: ${error.message}`);
       return;
     }
-    alert(`❌ Buchung konnte nicht gespeichert werden: ${error.message}`);
-    return;
   }
 
   // Reset transient state but keep last booking id in memory
@@ -434,6 +478,7 @@ function renderDone(booking){
     <div class="row"><strong>Datum</strong><div>${fmtDate(booking.dateISO)} · ${booking.time}</div></div>
     <div class="row"><strong>Name</strong><div>${booking.customer.firstName} ${booking.customer.lastName}</div></div>
     <div class="row"><strong>Status</strong><div>Angefragt</div></div>
+    ${isGuestBooking ? '<div class="row"><strong>Modus</strong><div>Gastbuchung</div></div>' : '<div class="row"><strong>Modus</strong><div>Konto-Buchung</div></div>'}
     <div class="divider"></div>
     <div class="muted">Demo-Nachricht (würde per SMS/E‑Mail gesendet):</div>
     <pre class="template">Hallo ${booking.customer.firstName}, wir haben deine Anfrage am ${fmtDate(booking.dateISO)} um ${booking.time} für ${booking.serviceName} erhalten. Wir bestätigen den Termin in Kürze. – Parrylicious Studio</pre>
@@ -479,22 +524,33 @@ downloadIcs.addEventListener('click', () => {
 /* init */
 async function boot(){
   if (!isSupabaseConfigured) {
-    alert('Supabase ist nicht konfiguriert. Bitte supabase-config.js ausfuellen.');
-    window.location.href = 'login.html?next=booking.html';
+    isGuestBooking = true;
+    bookingsCache = storage.get(GUEST_BOOKINGS_KEY, []);
+    waitlistCache = storage.get(GUEST_WAITLIST_KEY, []);
+    syncBookingModeHint();
+    showStep(state.step || 1);
     return;
   }
   try {
     currentUser = await getCurrentUser();
-    if (!currentUser) {
-      window.location.href = 'login.html?next=booking.html';
-      return;
+    if (currentUser) {
+      isGuestBooking = false;
+      bookingsCache = await getMyBookings();
+      waitlistCache = await getMyWaitlist();
+    } else {
+      isGuestBooking = true;
+      bookingsCache = storage.get(GUEST_BOOKINGS_KEY, []);
+      waitlistCache = storage.get(GUEST_WAITLIST_KEY, []);
     }
-    bookingsCache = await getMyBookings();
-    waitlistCache = await getMyWaitlist();
+    syncBookingModeHint();
     showStep(state.step || 1);
   } catch (error) {
-    alert(`Fehler beim Laden der Buchungsdaten: ${error.message}`);
-    window.location.href = 'login.html?next=booking.html';
+    isGuestBooking = true;
+    bookingsCache = storage.get(GUEST_BOOKINGS_KEY, []);
+    waitlistCache = storage.get(GUEST_WAITLIST_KEY, []);
+    syncBookingModeHint();
+    alert(`Hinweis: Konto konnte nicht geladen werden, Gastmodus aktiv. (${error.message})`);
+    showStep(state.step || 1);
   }
 }
 

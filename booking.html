@@ -18,6 +18,7 @@
         <a href="index.html#services">Leistungen</a>
         <a href="login.html">Login</a>
         <a class="btn small" href="index.html">Zurück</a>
+        <div data-profile-menu></div>
       </nav>
     </div>
   </header>
@@ -28,8 +29,8 @@
         <h2>Termin anfragen</h2>
         <p class="muted">
           Ablauf: Service wählen → Datum/Slot auswählen → Daten eingeben → (Demo) Anzahlung simulieren → Bestätigung per SMS/E‑Mail.
-          Login ist erforderlich, damit deine Termine deinem Konto zugeordnet sind.
         </p>
+        <p class="muted" id="bookingModeHint">Du kannst mit Login oder als Gast buchen.</p>
       </div>
 
       <div class="wizard">
@@ -90,7 +91,7 @@
 
         <section class="panel hidden" id="step4">
           <h3>Deine Angaben</h3>
-          <p class="muted">Die Buchung wird in deinem Konto gespeichert und im Dashboard angezeigt.</p>
+          <p class="muted">Mit Login landet die Buchung in deinem Konto. Ohne Login buchst du als Gast.</p>
 
           <form id="detailsForm" class="form">
             <div class="two-col">
@@ -185,6 +186,7 @@
     </div>
   </footer>
 
+  <script type="module" src="profile-menu.js"></script>
   <script type="module" src="booking.js"></script>
 </body>
 </html>
