@@ -36,8 +36,12 @@ a{ color:inherit; }
   border-bottom: 1px solid var(--line);
   z-index:10;
 }
-.topbar .container{ width:min(1280px, 97%); }
-.brand{ display:flex; align-items:center; gap:12px; text-decoration:none; margin-left:-10px; }
+.topbar .container{
+  width: 100%;
+  margin: 0;
+  padding: 0 14px 0 0;
+}
+.brand{ display:flex; align-items:center; gap:12px; text-decoration:none; margin-left:0; }
 .logo{
   width: 84px;
   height: 84px;
@@ -48,6 +52,7 @@ a{ color:inherit; }
 }
 
 .nav{ display:flex; align-items:center; gap:16px; }
+.topbar .nav{ margin-left:auto; }
 .nav a{ text-decoration:none; opacity:.9; }
 .nav a:hover{ opacity:1; text-decoration:underline; }
 
@@ -343,6 +348,7 @@ textarea{ min-height: 90px; resize: vertical; }
   gap:6px;
   z-index: 30;
 }
+.profile-dropdown.hidden{ display:none; }
 .profile-meta{
   display:grid;
   gap:4px;
