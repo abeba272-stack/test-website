@@ -105,14 +105,13 @@ a{ color:inherit; }
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
   z-index:10;
-  overflow: visible;
 }
 .topbar .container{
   width: 100%;
   margin: 0;
   padding: 0 14px 0 0;
 }
-.brand{ display:flex; align-items:center; gap:12px; text-decoration:none; margin-left:0; }
+.brand{ display:flex; align-items:center; gap:12px; text-decoration:none; margin-left:10px; }
 .logo{
   width: 180px;
   height: 70px;
@@ -120,7 +119,7 @@ a{ color:inherit; }
   border-radius: 16px;
   border: 2px solid rgba(14,6,4,.18);
   box-shadow: 0 8px 24px rgba(14,6,4,.14);
-  transform: translateY(6px);
+  transform: none;
 }
 
 .nav{ display:flex; align-items:center; gap:16px; }
@@ -158,12 +157,12 @@ a{ color:inherit; }
 @media (max-width: 900px){
   .hero-grid{ grid-template-columns: 1fr; }
   .nav{ display:none; }
-  .brand{ margin-left:0; }
+  .brand{ margin-left:8px; }
   .logo{
     width: 138px;
     height: 56px;
     border-radius: 14px;
-    transform: translateY(4px);
+    transform: none;
   }
 }
 
